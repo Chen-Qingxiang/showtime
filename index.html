@@ -303,8 +303,32 @@ function drawSingleLayer(layer, layerTop, options={}){
   for (const e of events) {
     const evTop = layerTop + 3 + e.__lane * (state.laneHeight + state.laneGap);
     const x1 = yearToX(e.start), x2 = yearToX(e.end);
+    const isPoint = e.start === e.end;
+
     // 可见性裁剪
     if (x2 < 0 || x1 > w) continue;
+
+    if (isPoint) {
+      const cx = clamp(x1, state.leftPad, w - state.rightPad);
+      const cy = evTop + (state.laneHeight-2) / 2;
+      const radius = Math.min(6, (state.laneHeight-2) / 2);
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 文本：点事件默认直接绘制在右侧
+      ctx.fillStyle = 'white';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const label = `${e.title}  ${displayRange(e.start,e.end)}`;
+      const textX = cx + radius + 8;
+      ctx.fillText(label, textX, cy);
+      continue;
+    }
+
     const rx = Math.max(x1, state.leftPad);
     const rw = Math.min(x2, w - state.rightPad) - rx;
     if (rw <= 1) continue;
