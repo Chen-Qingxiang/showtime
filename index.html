@@ -157,7 +157,7 @@ function parseTimeField(field) {
   if (!s) return null;
   // 使用基于“年份记号”的整体匹配，避免把负号当作分隔符
   const yearToken = '(?:-?\\d+|\\d+\\s*(?:BC|BCE)|(?:公元)?前\\s*\\d+)';
-  const re = new RegExp('^\\s*(' + yearToken + ')\\s*(?:~|–|—|－|-|〜|～|至|到)\\s*(' + yearToken + ')\\s*$', 'i');
+  const re = new RegExp('^\\s*(' + yearToken + ')\\s*(?:~|–|—|－|-|〜|～|至|到)\\s*(' + yearToken + ')?\\s*$', 'i');
   const m = s.match(re);
   if (m) {
     const start = parseYearToken(m[1]);
@@ -317,6 +317,20 @@ function drawSingleLayer(layer, layerTop, options={}){
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
+
+      // 外描边（深色）帮助与同色条带区分
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(1.2, radius * 0.45);
+      ctx.strokeStyle = 'rgba(8, 12, 18, 0.85)';
+      ctx.stroke();
+
+      // 内描边（浅色高光）增强存在感
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(0.5, radius - 0.8), 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(0.8, radius * 0.35);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.stroke();
 
       // 文本：点事件默认直接绘制在右侧
       ctx.fillStyle = 'white';
@@ -764,6 +778,7 @@ function runSelfTests() {
   add('parseTimeField: 221BC 至 207BC', ()=>{ const r = parseTimeField('221BC 至 207BC'); return r.start===-220 && r.end===-206; });
   add('parseTimeField: single 1054', ()=>{ const r = parseTimeField('1054'); return r.start===1054 && r.end===1054; });
   add('parseTimeField: single -1 (BCE)', ()=>{ const r = parseTimeField('-1'); return r.start===-1 && r.end===-1; });
+  add('parseTimeField: open interval 1949~', ()=>{ const r = parseTimeField('1949~'); return r.start===1949 && r.end===CURRENT_YEAR; });
 
   // parseCSV newline splitting
   add('parseCSV: split by \n', ()=> parseCSV('1~2,A\n3~4,B','L').length===2);
