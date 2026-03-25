@@ -53,6 +53,7 @@
       <label><span class="pill">步骤 1</span>CSV 文件（两列：time,title；layer 取自文件名）：</label>
       <input id="file" type="file" accept=".csv,text/csv" />
       <button id="btn-load">加载左侧文本</button>
+      <label><input id="mergeSameSource" type="checkbox" checked /> 同源追加到同一图层</label>
       <label>内置示例：
         <select id="exampleSelect"></select>
       </label>
@@ -113,7 +114,7 @@
           <li>单点也可：<code>1054</code> 会被视为 <code>1054~1054</code></li>
           <li>文件上传时 <code>layer</code> 取自文件名；“加载左侧文本”默认归为 <code>文本</code> 层</li>
         </ul>
-        <div>操作：可上传本地 CSV，也可在顶部“内置示例”直接加载 examples 目录中的数据；<span class="kbd">滚轮</span> 缩放，<span class="kbd">拖拽</span> 平移；<span class="kbd">Shift + 滚轮</span> 围绕中心缩放；<span class="kbd">Ctrl/Cmd + 滚轮</span> 加速缩放；顶部“范围预设”可一键切到人类史 / 地质史 / 宇宙史；<b>在左侧图层名称区域按住拖动</b>可上下调整 layer 顺序；<span class="kbd">右键</span> 图层名称可删除该层；双击或“重置视图”复位。</div>
+        <div>操作：可上传本地 CSV，也可在顶部“内置示例”直接加载 examples 目录中的数据；“同源追加到同一图层”打开时重复导入会叠加到原图层，关闭时每次导入都会创建新图层；<span class="kbd">滚轮</span> 缩放，<span class="kbd">拖拽</span> 平移；<span class="kbd">Shift + 滚轮</span> 围绕中心缩放；<span class="kbd">Ctrl/Cmd + 滚轮</span> 加速缩放；顶部“范围预设”可一键切到人类史 / 地质史 / 宇宙史；<b>在左侧图层名称区域按住拖动</b>可上下调整 layer 顺序；<span class="kbd">右键</span> 图层名称可删除该层；双击或“重置视图”复位。</div>
       </div>
     </aside>
     <main>
@@ -249,6 +250,22 @@ function parseCSV(text, layerName = '默认') {
 function basenameWithoutExt(path) {
   const file = String(path).split('/').pop() || path;
   return file.replace(/\.[^.]+$/, '');
+}
+
+function resolveLayerName(baseLayerName) {
+  const toggle = document.getElementById('mergeSameSource');
+  const mergeSameSource = toggle ? !!toggle.checked : true;
+  const base = baseLayerName || '默认';
+  if (mergeSameSource) return base;
+  const used = new Set(state.data.map(e => e.layer));
+  if (!used.has(base)) return base;
+  let i = 2;
+  let candidate = `${base} #${i}`;
+  while (used.has(candidate)) {
+    i += 1;
+    candidate = `${base} #${i}`;
+  }
+  return candidate;
 }
 
 // =============== 事件与布局 ==================
@@ -823,7 +840,7 @@ async function loadExampleFile(path) {
   const res = await fetch(encodeURI(path), { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
-  const layerName = basenameWithoutExt(path);
+  const layerName = resolveLayerName(basenameWithoutExt(path));
   const rows = parseCSV(text, layerName);
   const events = rowsToEvents(rows);
   if (!events.length) throw new Error('示例文件中未解析到有效事件');
@@ -836,7 +853,7 @@ file.addEventListener('change', async (e)=>{
   const f = e.target.files?.[0];
   if (!f) return;
   const text = await f.text();
-  const layerName = (f.name || '文件').replace(/\.[^.]+$/, '');
+  const layerName = resolveLayerName((f.name || '文件').replace(/\.[^.]+$/, ''));
   const rows = parseCSV(text, layerName);
   const events = rowsToEvents(rows);
   if (!events.length) {
@@ -849,7 +866,7 @@ file.addEventListener('change', async (e)=>{
 
 document.getElementById('btn-load').addEventListener('click', ()=>{
   const text = document.getElementById('csvText').value;
-  const rows = parseCSV(text, '文本');
+  const rows = parseCSV(text, resolveLayerName('文本'));
   const events = rowsToEvents(rows);
   if (!events.length) {
     alert(`左侧文本未解析出事件。\n示例：-2070~-1600,夏`);
@@ -915,6 +932,19 @@ function runSelfTests() {
   add('parseTimeField: single -1 (BCE)', ()=>{ const r = parseTimeField('-1'); return r.start===-1 && r.end===-1; });
   add('fmtYear: compact BCE year to 亿', ()=> fmtYear(-200000000) === '2亿 BC');
   add('displayRange: compact large CE range', ()=> displayRange(200000, 250000) === '20万~25万');
+  add('resolveLayerName: creates new layer when merge is off', ()=>{
+    const el = document.getElementById('mergeSameSource');
+    const prevChecked = !!el.checked;
+    const backup = state.data.slice();
+    try {
+      el.checked = false;
+      state.data = [{ layer: '文本' }, { layer: '文本 #2' }];
+      return resolveLayerName('文本') === '文本 #3';
+    } finally {
+      el.checked = prevChecked;
+      state.data = backup;
+    }
+  });
 
   // parseCSV newline splitting
   add('parseCSV: split by \n', ()=> parseCSV('1~2,A\n3~4,B','L').length===2);
