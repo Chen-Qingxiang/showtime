@@ -195,8 +195,38 @@ function parseTimeField(field) {
   return { start: y, end: y };
 }
 
+function formatLargeYearValue(absYear) {
+  if (absYear >= 1e8) return `${trimNumber(absYear / 1e8)}亿`;
+  if (absYear >= 1e4) return `${trimNumber(absYear / 1e4)}万`;
+  return String(Math.round(absYear));
+}
+
+function fmtYear(y, options = {}) {
+  const abs = Math.abs(y);
+  const compactThreshold = options.compactThreshold ?? 1e4;
+  const body = abs >= compactThreshold ? formatLargeYearValue(abs) : String(Math.round(abs));
+  if (y < 0) return `${body} BC`;
+  if (options.withCE) return `${body} CE`;
+  return body;
+}
+
 function fmtYearForAxis(y) {
-  return y < 0 ? `${-y} BC` : `${y}`; // 显示层不出现 0 年
+  return fmtYear(y, { compactThreshold: 1e4 }); // 大尺度自动转万/亿
+}
+
+function formatSpanYears(years) {
+  if (!Number.isFinite(years) || years <= 0) return '0 年';
+  const abs = Math.abs(years);
+  if (abs >= 1e9) return `${trimNumber(abs / 1e9)} 十亿年`;
+  if (abs >= 1e8) return `${trimNumber(abs / 1e8)} 亿年`;
+  if (abs >= 1e4) return `${trimNumber(abs / 1e4)} 万年`;
+  return `${trimNumber(abs)} 年`;
+}
+
+function trimNumber(n) {
+  if (!Number.isFinite(n)) return String(n);
+  if (Math.abs(n) >= 100 || Number.isInteger(n)) return String(Math.round(n));
+  return Number(n.toFixed(2)).toString();
 }
 
 function formatSpanYears(years) {
@@ -551,8 +581,8 @@ function draw() {
 }
 
 function displayRange(a,b) {
-  const A = a<0 ? `${-a}BC` : `${a}`;
-  const B = b<0 ? `${-b}BC` : `${b}`;
+  const A = fmtYear(a, { compactThreshold: 1e4 });
+  const B = fmtYear(b, { compactThreshold: 1e4 });
   return `${A}~${B}`;
 }
 
@@ -898,6 +928,8 @@ function runSelfTests() {
   add('parseTimeField: 221BC 至 207BC', ()=>{ const r = parseTimeField('221BC 至 207BC'); return r.start===-220 && r.end===-206; });
   add('parseTimeField: single 1054', ()=>{ const r = parseTimeField('1054'); return r.start===1054 && r.end===1054; });
   add('parseTimeField: single -1 (BCE)', ()=>{ const r = parseTimeField('-1'); return r.start===-1 && r.end===-1; });
+  add('fmtYear: compact BCE year to 亿', ()=> fmtYear(-200000000) === '2亿 BC');
+  add('displayRange: compact large CE range', ()=> displayRange(200000, 250000) === '20万~25万');
 
   // parseCSV newline splitting
   add('parseCSV: split by \n', ()=> parseCSV('1~2,A\n3~4,B','L').length===2);
