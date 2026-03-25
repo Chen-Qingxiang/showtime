@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>一页版时间轴 · MVP（CSV 两列即可）</title>
+  <title>Showtime Timeline · 多尺度历史时间轴</title>
   <style>
     :root { --bg:#0b0c10; --panel:#11141a; --fg:#e6edf3; --muted:#93a1b3; --accent:#3ea6ff; }
     * { box-sizing: border-box; }
@@ -212,21 +212,6 @@ function fmtYear(y, options = {}) {
 
 function fmtYearForAxis(y) {
   return fmtYear(y, { compactThreshold: 1e4 }); // 大尺度自动转万/亿
-}
-
-function formatSpanYears(years) {
-  if (!Number.isFinite(years) || years <= 0) return '0 年';
-  const abs = Math.abs(years);
-  if (abs >= 1e9) return `${trimNumber(abs / 1e9)} 十亿年`;
-  if (abs >= 1e8) return `${trimNumber(abs / 1e8)} 亿年`;
-  if (abs >= 1e4) return `${trimNumber(abs / 1e4)} 万年`;
-  return `${trimNumber(abs)} 年`;
-}
-
-function trimNumber(n) {
-  if (!Number.isFinite(n)) return String(n);
-  if (Math.abs(n) >= 100 || Number.isInteger(n)) return String(Math.round(n));
-  return Number(n.toFixed(2)).toString();
 }
 
 function formatSpanYears(years) {
