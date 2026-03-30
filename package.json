@@ -1,0 +1,27 @@
+{
+  "name": "showtime",
+  "version": "1.0.0",
+  "description": "一个面向**历史 / 文学 / 地质 / 宇宙演化**等跨尺度研究场景的可视化时间轴工具。   你可以把不同来源的 CSV 作为不同图层叠加，对同一问题进行“宏观到微观”的联动观察。",
+  "main": "app.js",
+  "directories": {
+    "example": "examples"
+  },
+  "scripts": {
+    "dev": "serve ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chen-Qingxiang/showtime.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Chen-Qingxiang/showtime/issues"
+  },
+  "homepage": "https://github.com/Chen-Qingxiang/showtime#readme",
+  "devDependencies": {
+    "serve": "^14.2.6"
+  }
+}
