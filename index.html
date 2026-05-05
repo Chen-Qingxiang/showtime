@@ -13,6 +13,15 @@
       <input id="file" type="file" accept=".csv,text/csv" />
       <button id="btn-load">加载左侧文本</button>
       <label><input id="mergeSameSource" type="checkbox" checked /> 同源追加到同一图层</label>
+      <label>点事件显示：
+        <select id="pointDisplayMode">
+          <option value="point">保持圆点</option>
+          <option value="year" selected>年点显示为全年</option>
+          <option value="month">年/月点显示为区间</option>
+          <option value="date">年/月/日点显示为区间</option>
+          <option value="time">全部点显示为区间</option>
+        </select>
+      </label>
       <label>内置示例：
         <select id="exampleSelect"></select>
       </label>
@@ -41,7 +50,7 @@
     <aside class="side">
       <h3>CSV 文本（示例）</h3>
       <textarea id="csvText" spellcheck="false"># time,title（两列；layer 由文件名决定，左侧文本默认层名“文本”）
-# 约定：范围用 ~ 分隔；支持年份或日期（例 1949-10-01）
+# 约定：范围用 ~ 分隔；支持年份、年月、日期或日内时间（例 1949-10-01 12:30:00）
 # 可用负数表示 BCE（例 -2070~-1600）
 # 若无结束（例如 1949~ 或 1949-10-01~），将自动补到当前年/日期
 -2070~-1600,夏
@@ -77,10 +86,10 @@
           <div class="hint-title">数据格式</div>
           <ul>
             <li><code>time,title</code> 两列即可，图层名默认取自文件名</li>
-            <li><code>start~end</code>：支持 <b>~ - — – － 〜 ～ 至 到</b>，也支持日期、负数、<code>221BC</code>、<code>公元前221</code></li>
-            <li>日期：<code>YYYY-MM-DD</code>，例如 <code>1949-10-01</code></li>
-            <li>单点：<code>1054</code> 或 <code>1949-10-01</code> 会视为单点事件</li>
-            <li>开区间：<code>1949~</code> 补到当前年份，<code>1949-10-01~</code> 补到当前日期</li>
+            <li><code>start~end</code>：支持 <b>~ - — – － 〜 ～ 至 到</b>，也支持日期、日内时间、负数、<code>221BC</code>、<code>公元前221</code></li>
+            <li>日期/时间：<code>YYYY-MM</code>、<code>YYYY-MM-DD</code>、<code>YYYY-MM-DD HH:mm[:ss]</code></li>
+            <li>单点：<code>1054</code>、<code>1949-10</code>、<code>1949-10-01 12:30</code> 会视为单点事件</li>
+            <li>开区间：<code>1949~</code> 补到当前年份，<code>1949-10-01~</code> 补到当前日期；日内时间会保留对应精度</li>
             <li>标题含逗号时请加双引号：<code>1942,"《春望》, 杜甫相关"</code></li>
           </ul>
         </div>
@@ -93,6 +102,7 @@
             <li>顶部“内置示例”可直接加载预置数据</li>
             <li>顶部“背景库”可叠加通用参照层，“加载推荐背景”会按当前主题和时间范围自动选几层</li>
             <li>勾选“同源追加到同一图层”时，重复导入会叠加到原图层</li>
+            <li>“点事件显示”可把 <code>1647~1647</code> 这类单年点显示为全年条，减少长标题挤在圆点后的重叠</li>
           </ul>
         </div>
 

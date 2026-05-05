@@ -34,12 +34,19 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 (() => {
   const CURRENT_YEAR = new Date().getFullYear();
   const MIN_PX_PER_YEAR = 1e-8;
-  const MAX_PX_PER_YEAR = 100000;
+  const MAX_PX_PER_YEAR = 2000000000;
   const ZOOM_SLIDER_MIN = 0;
   const ZOOM_SLIDER_MAX = 1000;
   const DEFAULT_LAYER_NAME = '默认';
   const TEXT_LAYER_NAME = '文本';
   const SIDE_PANEL_STORAGE_KEY = 'showtime:side-collapsed';
+  const POINT_DISPLAY_STORAGE_KEY = 'showtime:point-display-mode';
+  const DEFAULT_POINT_DISPLAY_MODE = 'year';
+  const POINT_DISPLAY_MODES = new Set(['point', 'year', 'month', 'date', 'time', 'all']);
+  const TIME_EPSILON = 1e-12;
+  const SECONDS_PER_MINUTE = 60;
+  const SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE;
+  const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR;
   const LAYER_COLOR_PRESETS = [
     '#3ea6ff', '#56c271', '#f7b538', '#ff7a59', '#ff5d8f', '#b27cff',
     '#27c1b8', '#7a8cff', '#9ccc65', '#d4a017', '#c86bfa', '#ef476f',
@@ -874,6 +881,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     layers: [],
     layerRects: new Map(),
     drag: { active: false, layer: null, grabDy: 0, mouseY: 0, overlayY: 0, targetIndex: 0 },
+    pointDisplayMode: DEFAULT_POINT_DISPLAY_MODE,
   };
 
   const pointer = { isPanning: false, lastX: 0, lastY: 0 };
@@ -890,6 +898,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     }
     ui.csvText.value = DEFAULT_CSV_SAMPLE;
     restoreSidePanelState();
+    restorePointDisplayMode();
     bindCanvasInteractions();
     bindUIActions();
     initExampleSelector();
@@ -916,6 +925,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ui.zoomReadout = document.getElementById('zoomReadout');
     ui.csvText = document.getElementById('csvText');
     ui.mergeSameSource = document.getElementById('mergeSameSource');
+    ui.pointDisplayMode = document.getElementById('pointDisplayMode');
     ui.toast = document.getElementById('toast');
     ui.testBadge = document.getElementById('testBadge');
     ui.testPanel = document.getElementById('testPanel');
@@ -966,18 +976,31 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return { year: year + 1, month: 1, day: 1 };
   }
 
-  function dateToTimeValue(year, month, day) {
-    return year + dayOfYear(year, month, day) / daysInYear(year);
+  function dateToTimeValue(year, month, day, hour = 0, minute = 0, second = 0) {
+    const dayFraction = (hour * SECONDS_PER_HOUR + minute * SECONDS_PER_MINUTE + second) / SECONDS_PER_DAY;
+    return year + (dayOfYear(year, month, day) + dayFraction) / daysInYear(year);
   }
 
   function timeValueToDateParts(value) {
     let year = Math.floor(value);
-    let dayIndex = Math.floor((value - year) * daysInYear(year) + 1e-9);
-    if (dayIndex >= daysInYear(year)) {
+    let secondIndex = Math.floor((value - year) * daysInYear(year) * SECONDS_PER_DAY + 1e-6);
+    const secondsInYear = daysInYear(year) * SECONDS_PER_DAY;
+    if (secondIndex >= secondsInYear) {
       year += 1;
-      dayIndex = 0;
+      secondIndex = 0;
     }
-    return datePartsFromDayOfYear(year, Math.max(0, dayIndex));
+    secondIndex = Math.max(0, secondIndex);
+    const dayIndex = Math.floor(secondIndex / SECONDS_PER_DAY);
+    const secondsOfDay = secondIndex % SECONDS_PER_DAY;
+    const date = datePartsFromDayOfYear(year, dayIndex);
+    return {
+      year: date.year,
+      month: date.month,
+      day: date.day,
+      hour: Math.floor(secondsOfDay / SECONDS_PER_HOUR),
+      minute: Math.floor((secondsOfDay % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE),
+      second: secondsOfDay % SECONDS_PER_MINUTE,
+    };
   }
 
   function addDays(parts, days) {
@@ -1006,6 +1029,31 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       year: Math.floor(monthIndex / 12),
       month: (monthIndex % 12) + 1,
       day: 1,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    };
+  }
+
+  function addSeconds(parts, seconds) {
+    let date = { year: parts.year, month: parts.month, day: parts.day };
+    let totalSeconds = (parts.hour || 0) * SECONDS_PER_HOUR
+      + (parts.minute || 0) * SECONDS_PER_MINUTE
+      + (parts.second || 0)
+      + seconds;
+
+    while (totalSeconds >= SECONDS_PER_DAY) {
+      date = addDays(date, 1);
+      totalSeconds -= SECONDS_PER_DAY;
+    }
+
+    return {
+      year: date.year,
+      month: date.month,
+      day: date.day,
+      hour: Math.floor(totalSeconds / SECONDS_PER_HOUR),
+      minute: Math.floor((totalSeconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE),
+      second: totalSeconds % SECONDS_PER_MINUTE,
     };
   }
 
@@ -1023,9 +1071,30 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return `${padYear(parts.year)}-${pad2(parts.month)}-${pad2(parts.day)}`;
   }
 
+  function formatMonthParts(parts) {
+    return `${padYear(parts.year)}-${pad2(parts.month)}`;
+  }
+
+  function formatTimeParts(parts, precision = 'date') {
+    const date = formatDateParts(parts);
+    if (precision === 'hour') return `${date} ${pad2(parts.hour || 0)}:00`;
+    if (precision === 'minute') return `${date} ${pad2(parts.hour || 0)}:${pad2(parts.minute || 0)}`;
+    if (precision === 'second') {
+      return `${date} ${pad2(parts.hour || 0)}:${pad2(parts.minute || 0)}:${pad2(parts.second || 0)}`;
+    }
+    return date;
+  }
+
   function getCurrentDateParts() {
     const now = new Date();
-    return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+    return {
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+      day: now.getDate(),
+      hour: now.getHours(),
+      minute: now.getMinutes(),
+      second: now.getSeconds(),
+    };
   }
 
   function parseDateToken(token) {
@@ -1034,17 +1103,27 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     if (!s) return null;
     if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
 
-    const match = s.match(/^(\d{1,6})[/-](\d{1,2})[/-](\d{1,2})$/);
+    const match = s.match(/^(\d{3,6})[/-](\d{1,2})(?:[/-](\d{1,2})(?:[T\s]+(\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?)?$/);
     if (!match) return null;
 
     const year = parseInt(match[1], 10);
     const month = parseInt(match[2], 10);
-    const day = parseInt(match[3], 10);
+    const day = match[3] == null ? 1 : parseInt(match[3], 10);
+    const hour = match[4] == null ? 0 : parseInt(match[4], 10);
+    const minute = match[5] == null ? 0 : parseInt(match[5], 10);
+    const second = match[6] == null ? 0 : parseInt(match[6], 10);
     if (year <= 0 || month < 1 || month > 12) return null;
     if (day < 1 || day > daysInMonth(year, month)) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return null;
 
-    const date = { year, month, day };
-    return { value: dateToTimeValue(year, month, day), precision: 'date', date };
+    let precision = 'month';
+    if (match[3] != null) precision = 'date';
+    if (match[4] != null) precision = 'hour';
+    if (match[5] != null) precision = 'minute';
+    if (match[6] != null) precision = 'second';
+
+    const date = { year, month, day, hour, minute, second };
+    return { value: dateToTimeValue(year, month, day, hour, minute, second), precision, date };
   }
 
   function parseYearToken(token) {
@@ -1080,9 +1159,26 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function currentTokenForPrecision(precision) {
-    if (precision === 'date') {
+    if (precision === 'month' || precision === 'date' || precision === 'hour' || precision === 'minute' || precision === 'second') {
       const date = getCurrentDateParts();
-      return { value: dateToTimeValue(date.year, date.month, date.day), precision: 'date', date };
+      if (precision === 'month') {
+        const month = { year: date.year, month: date.month, day: 1, hour: 0, minute: 0, second: 0 };
+        return { value: dateToTimeValue(month.year, month.month, month.day), precision, date: month };
+      }
+      if (precision === 'date') {
+        const day = { year: date.year, month: date.month, day: date.day, hour: 0, minute: 0, second: 0 };
+        return { value: dateToTimeValue(day.year, day.month, day.day), precision, date: day };
+      }
+      if (precision === 'hour') {
+        const hour = { year: date.year, month: date.month, day: date.day, hour: date.hour, minute: 0, second: 0 };
+        return { value: dateToTimeValue(hour.year, hour.month, hour.day, hour.hour), precision, date: hour };
+      }
+      if (precision === 'minute') {
+        const minute = { year: date.year, month: date.month, day: date.day, hour: date.hour, minute: date.minute, second: 0 };
+        return { value: dateToTimeValue(minute.year, minute.month, minute.day, minute.hour, minute.minute), precision, date: minute };
+      }
+      const second = { year: date.year, month: date.month, day: date.day, hour: date.hour, minute: date.minute, second: date.second };
+      return { value: dateToTimeValue(second.year, second.month, second.day, second.hour, second.minute, second.second), precision, date: second };
     }
     return { value: CURRENT_YEAR, precision: 'year', date: null };
   }
@@ -1103,7 +1199,15 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   function parseTimeField(field) {
     const text = String(field).trim();
     if (!text) return null;
-    const dateToken = '(?:\\d{1,6}[/-]\\d{1,2}[/-]\\d{1,2})';
+
+    const token = parseTimeToken(text);
+    if (token != null) return makeTimeRange(token, token);
+
+    const dateLikePattern = /^\d{3,6}[/-]\d{1,2}(?:[/-]\d{1,2}(?:[T\s]+\d{1,2}(?::\d{1,2}(?::\d{1,2})?)?)?)?$/;
+    if (dateLikePattern.test(text)) return null;
+
+    const clockToken = '(?:[T\\s]+\\d{1,2}(?::\\d{1,2}(?::\\d{1,2})?)?)';
+    const dateToken = '(?:\\d{3,6}[/-]\\d{1,2}(?:[/-]\\d{1,2}(?:' + clockToken + ')?)?)';
     const yearToken = '(?:-?\\d+|\\d+\\s*(?:BC|BCE)|(?:公元)?前\\s*\\d+)';
     const timeToken = '(?:' + dateToken + '|' + yearToken + ')';
     const rangePattern = new RegExp(
@@ -1119,9 +1223,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       return makeTimeRange(start, end);
     }
 
-    const token = parseTimeToken(text);
-    if (token == null) return null;
-    return makeTimeRange(token, token);
+    return null;
   }
 
   function parseCSVLine(line) {
@@ -1220,15 +1322,20 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function layoutLanes(events) {
-    const sorted = [...events].sort((a, b) => a.start - b.start || a.end - b.end);
+    const sorted = [...events].sort((a, b) => {
+      const aRange = getEventDisplayRange(a);
+      const bRange = getEventDisplayRange(b);
+      return aRange.start - bRange.start || aRange.end - bRange.end;
+    });
     const lanes = [];
     for (const event of sorted) {
-      let laneIndex = lanes.findIndex((end) => end <= event.start);
+      const range = getEventDisplayRange(event);
+      let laneIndex = lanes.findIndex((end) => end <= range.start + TIME_EPSILON);
       if (laneIndex === -1) {
         laneIndex = lanes.length;
-        lanes.push(event.end);
+        lanes.push(range.end);
       } else {
-        lanes[laneIndex] = event.end;
+        lanes[laneIndex] = range.end;
       }
       event.__lane = laneIndex;
     }
@@ -1261,8 +1368,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function formatTimeValue(value, precision = 'year', dateParts = null, options = {}) {
-    if (precision === 'date') {
-      return formatDateParts(dateParts || timeValueToDateParts(value));
+    if (precision === 'month') {
+      return formatMonthParts(dateParts || timeValueToDateParts(value));
+    }
+    if (precision === 'date' || precision === 'hour' || precision === 'minute' || precision === 'second') {
+      return formatTimeParts(dateParts || timeValueToDateParts(value), precision);
     }
     return fmtYear(value, options);
   }
@@ -1271,6 +1381,64 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     const start = formatTimeValue(event.start, event.startPrecision, event.startDate, { compactThreshold: 1e4 });
     const end = formatTimeValue(event.end, event.endPrecision, event.endDate, { compactThreshold: 1e4 });
     return start === end ? start : `${start}~${end}`;
+  }
+
+  function isPointEvent(event) {
+    return Math.abs(event.start - event.end) <= TIME_EPSILON;
+  }
+
+  function getPointPrecision(event) {
+    if (event.startPrecision === event.endPrecision) return event.startPrecision || 'year';
+    return event.startPrecision || event.endPrecision || 'year';
+  }
+
+  function shouldExpandPointEvent(event) {
+    if (!isPointEvent(event)) return false;
+    const precision = getPointPrecision(event);
+    const mode = state.pointDisplayMode === 'all' ? 'time' : state.pointDisplayMode;
+    const precisionRank = { year: 1, month: 2, date: 3, hour: 4, minute: 5, second: 6 };
+    const modeRank = { point: 0, year: 1, month: 2, date: 3, time: 6 };
+    return (precisionRank[precision] || 0) <= (modeRank[mode] || 0);
+  }
+
+  function getPointSpanEnd(event) {
+    const precision = getPointPrecision(event);
+    const parts = event.startDate || timeValueToDateParts(event.start);
+
+    if (precision === 'year') return event.start + 1;
+    if (precision === 'month') {
+      const end = addMonths(parts, 1);
+      return dateToTimeValue(end.year, end.month, end.day);
+    }
+    if (precision === 'date') {
+      const end = addDays(parts, 1);
+      return dateToTimeValue(end.year, end.month, end.day);
+    }
+    if (precision === 'hour') {
+      const end = addSeconds(parts, SECONDS_PER_HOUR);
+      return dateToTimeValue(end.year, end.month, end.day, end.hour, end.minute, end.second);
+    }
+    if (precision === 'minute') {
+      const end = addSeconds(parts, SECONDS_PER_MINUTE);
+      return dateToTimeValue(end.year, end.month, end.day, end.hour, end.minute, end.second);
+    }
+    if (precision === 'second') {
+      const end = addSeconds(parts, 1);
+      return dateToTimeValue(end.year, end.month, end.day, end.hour, end.minute, end.second);
+    }
+    return event.end;
+  }
+
+  function getEventDisplayRange(event) {
+    if (!shouldExpandPointEvent(event)) {
+      return { start: event.start, end: event.end, expandedPoint: false };
+    }
+    const end = getPointSpanEnd(event);
+    return {
+      start: event.start,
+      end: end > event.start ? end : event.end,
+      expandedPoint: end > event.start,
+    };
   }
 
   function formatSpanYears(years) {
@@ -1284,7 +1452,9 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       if (days >= 1) return `${trimNumber(days)} 天`;
       const hours = days * 24;
       if (hours >= 1) return `${trimNumber(hours)} 小时`;
-      return `${trimNumber(hours * 60)} 分钟`;
+      const minutes = hours * 60;
+      if (minutes >= 1) return `${trimNumber(minutes)} 分钟`;
+      return `${trimNumber(minutes * 60)} 秒`;
     }
     return `${trimNumber(abs)} 年`;
   }
@@ -1397,6 +1567,30 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     }
   }
 
+  function setPointDisplayMode(mode, options = {}) {
+    const next = POINT_DISPLAY_MODES.has(mode) ? mode : DEFAULT_POINT_DISPLAY_MODE;
+    state.pointDisplayMode = next;
+    if (ui.pointDisplayMode) ui.pointDisplayMode.value = next;
+    if (!options.skipStorage) {
+      try {
+        window.localStorage.setItem(POINT_DISPLAY_STORAGE_KEY, next);
+      } catch {}
+    }
+    if (!options.skipRebuild) {
+      rebuildFromState();
+      draw();
+    }
+  }
+
+  function restorePointDisplayMode() {
+    let mode = DEFAULT_POINT_DISPLAY_MODE;
+    try {
+      const saved = window.localStorage.getItem(POINT_DISPLAY_STORAGE_KEY);
+      if (POINT_DISPLAY_MODES.has(saved)) mode = saved;
+    } catch {}
+    setPointDisplayMode(mode, { skipStorage: true, skipRebuild: true });
+  }
+
   function yearToX(year) {
     return state.leftPad + (year - state.viewStart) * state.pxPerYear;
   }
@@ -1495,9 +1689,10 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
     for (const event of events) {
       const top = layerTop + 3 + event.__lane * (state.laneHeight + state.laneGap);
-      const x1 = yearToX(event.start);
-      const x2 = yearToX(event.end);
-      const isPoint = event.start === event.end;
+      const displayRange = getEventDisplayRange(event);
+      const x1 = yearToX(displayRange.start);
+      const x2 = yearToX(displayRange.end);
+      const isPoint = Math.abs(displayRange.start - displayRange.end) <= TIME_EPSILON;
 
       if (x2 < 0 || x1 > width) continue;
 
@@ -1532,8 +1727,10 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       }
 
       const rx = Math.max(x1, state.leftPad);
-      const rw = Math.min(x2, width - state.rightPad) - rx;
-      if (rw <= 1) continue;
+      const rawRw = Math.min(x2, width - state.rightPad) - rx;
+      if (rawRw <= 0) continue;
+      if (rawRw <= 1 && !displayRange.expandedPoint) continue;
+      const rw = displayRange.expandedPoint ? Math.max(rawRw, 3) : rawRw;
 
       ctx.fillStyle = color;
       roundRect(ctx, rx, top, rw, state.laneHeight - 2, 6);
@@ -1577,6 +1774,30 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
   function chooseCalendarTick(pxPerYear) {
     const targetPx = 110;
+    const pxPerSecond = pxPerYear / (365.2425 * SECONDS_PER_DAY);
+    if (pxPerSecond > 0) {
+      const targetSeconds = targetPx / pxPerSecond;
+      for (const step of [1, 2, 5, 10, 15, 30]) {
+        if (step >= targetSeconds) return { unit: 'second', step };
+      }
+    }
+
+    const pxPerMinute = pxPerYear / (365.2425 * 24 * 60);
+    if (pxPerMinute > 0) {
+      const targetMinutes = targetPx / pxPerMinute;
+      for (const step of [1, 2, 5, 10, 15, 30]) {
+        if (step >= targetMinutes) return { unit: 'minute', step };
+      }
+    }
+
+    const pxPerHour = pxPerYear / (365.2425 * 24);
+    if (pxPerHour > 0) {
+      const targetHours = targetPx / pxPerHour;
+      for (const step of [1, 2, 3, 6, 12]) {
+        if (step >= targetHours) return { unit: 'hour', step };
+      }
+    }
+
     const pxPerDay = pxPerYear / 365.2425;
     if (pxPerDay > 0) {
       const targetDays = targetPx / pxPerDay;
@@ -1596,29 +1817,77 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return null;
   }
 
+  function tickUnitSeconds(tick) {
+    if (tick.unit === 'hour') return tick.step * SECONDS_PER_HOUR;
+    if (tick.unit === 'minute') return tick.step * SECONDS_PER_MINUTE;
+    if (tick.unit === 'second') return tick.step;
+    return 0;
+  }
+
   function firstCalendarTick(startValue, tick) {
     const startParts = timeValueToDateParts(startValue);
     if (tick.unit === 'month') {
       const remainder = (startParts.month - 1) % tick.step;
-      let parts = { year: startParts.year, month: startParts.month - remainder, day: 1 };
+      let parts = { year: startParts.year, month: startParts.month - remainder, day: 1, hour: 0, minute: 0, second: 0 };
       if (dateToTimeValue(parts.year, parts.month, parts.day) < startValue - 1e-9) {
         parts = addMonths(parts, tick.step);
       }
       return parts;
     }
 
-    const remainder = dayOfYear(startParts.year, startParts.month, startParts.day) % tick.step;
+    if (tick.unit === 'day') {
+      const remainder = dayOfYear(startParts.year, startParts.month, startParts.day) % tick.step;
+      let parts = { year: startParts.year, month: startParts.month, day: startParts.day, hour: 0, minute: 0, second: 0 };
+      if (remainder !== 0) parts = addDays(parts, tick.step - remainder);
+      if (dateToTimeValue(parts.year, parts.month, parts.day) < startValue - 1e-9) {
+        parts = addDays(parts, tick.step);
+      }
+      return parts;
+    }
+
+    const stepSeconds = tickUnitSeconds(tick);
     let parts = startParts;
-    if (remainder !== 0) parts = addDays(parts, tick.step - remainder);
-    if (dateToTimeValue(parts.year, parts.month, parts.day) < startValue - 1e-9) {
-      parts = addDays(parts, tick.step);
+    const secondsOfDay = (parts.hour || 0) * SECONDS_PER_HOUR
+      + (parts.minute || 0) * SECONDS_PER_MINUTE
+      + (parts.second || 0);
+    const remainder = secondsOfDay % stepSeconds;
+    if (remainder !== 0) parts = addSeconds(parts, stepSeconds - remainder);
+    if (dateToTimeValue(parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second) < startValue - 1e-9) {
+      parts = addSeconds(parts, stepSeconds);
     }
     return parts;
   }
 
   function formatCalendarAxisLabel(parts, unit) {
     if (unit === 'month') return `${padYear(parts.year)}-${pad2(parts.month)}`;
+    if (unit === 'hour') {
+      const clock = `${pad2(parts.hour || 0)}:00`;
+      return (parts.hour || 0) === 0 ? `${formatDateParts(parts)} ${clock}` : clock;
+    }
+    if (unit === 'minute') {
+      const clock = `${pad2(parts.hour || 0)}:${pad2(parts.minute || 0)}`;
+      return (parts.hour || 0) === 0 && (parts.minute || 0) === 0 ? `${formatDateParts(parts)} ${clock}` : clock;
+    }
+    if (unit === 'second') {
+      const clock = `${pad2(parts.hour || 0)}:${pad2(parts.minute || 0)}:${pad2(parts.second || 0)}`;
+      return (parts.hour || 0) === 0 && (parts.minute || 0) === 0 && (parts.second || 0) === 0
+        ? `${formatDateParts(parts)} ${clock}`
+        : clock;
+    }
     return formatDateParts(parts);
+  }
+
+  function calendarTickValue(parts, tick) {
+    if (tick.unit === 'month' || tick.unit === 'day') {
+      return dateToTimeValue(parts.year, parts.month, parts.day);
+    }
+    return dateToTimeValue(parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second);
+  }
+
+  function advanceCalendarTick(parts, tick) {
+    if (tick.unit === 'month') return addMonths(parts, tick.step);
+    if (tick.unit === 'day') return addDays(parts, tick.step);
+    return addSeconds(parts, tickUnitSeconds(tick));
   }
 
   function drawCalendarAxisTicks(width, y) {
@@ -1637,7 +1906,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     let parts = firstCalendarTick(startValue, tick);
     let guard = 0;
     while (guard < 500) {
-      const value = dateToTimeValue(parts.year, parts.month, parts.day);
+      const value = calendarTickValue(parts, tick);
       if (value > endValue + 1e-9) break;
       const x = yearToX(value);
       ctx.strokeStyle = '#253045';
@@ -1646,7 +1915,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       ctx.lineTo(x, y - 6);
       ctx.stroke();
       ctx.fillText(formatCalendarAxisLabel(parts, tick.unit), x, y - 8);
-      parts = tick.unit === 'month' ? addMonths(parts, tick.step) : addDays(parts, tick.step);
+      parts = advanceCalendarTick(parts, tick);
       guard += 1;
     }
     return true;
@@ -1768,6 +2037,18 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
   function updateZoomReadout() {
     if (!ui.zoomReadout) return;
+    if (state.pxPerYear >= 365.2425 * SECONDS_PER_DAY) {
+      ui.zoomReadout.textContent = `${trimNumber(state.pxPerYear / (365.2425 * SECONDS_PER_DAY))} px / 秒`;
+      return;
+    }
+    if (state.pxPerYear >= 365.2425 * 24 * 60) {
+      ui.zoomReadout.textContent = `${trimNumber(state.pxPerYear / (365.2425 * 24 * 60))} px / 分钟`;
+      return;
+    }
+    if (state.pxPerYear >= 365.2425 * 24) {
+      ui.zoomReadout.textContent = `${trimNumber(state.pxPerYear / (365.2425 * 24))} px / 小时`;
+      return;
+    }
     if (state.pxPerYear >= 365.2425) {
       ui.zoomReadout.textContent = `${trimNumber(state.pxPerYear / 365.2425)} px / 天`;
       return;
@@ -1800,9 +2081,10 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
   function getDataBounds() {
     if (!state.data.length) return null;
+    const ranges = state.data.map(getEventDisplayRange);
     return {
-      minYear: Math.min(...state.data.map((event) => event.start)),
-      maxYear: Math.max(...state.data.map((event) => event.end)),
+      minYear: Math.min(...ranges.map((range) => range.start)),
+      maxYear: Math.max(...ranges.map((range) => range.end)),
     };
   }
 
@@ -2190,6 +2472,9 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
     ui.loadButton?.addEventListener('click', loadCsvTextarea);
     ui.resetButton?.addEventListener('click', resetView);
+    ui.pointDisplayMode?.addEventListener('change', (event) => {
+      setPointDisplayMode(event.target.value);
+    });
 
     ui.loadExampleButton?.addEventListener('click', async () => {
       const path = ui.exampleSelect?.value;
@@ -2533,6 +2818,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       layout: new Map(state.layout),
       pxPerYear: state.pxPerYear,
       viewStart: state.viewStart,
+      pointDisplayMode: state.pointDisplayMode,
     };
   }
 
@@ -2546,6 +2832,8 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     state.layout = backup.layout;
     state.pxPerYear = backup.pxPerYear;
     state.viewStart = backup.viewStart;
+    state.pointDisplayMode = backup.pointDisplayMode;
+    if (ui.pointDisplayMode) ui.pointDisplayMode.value = state.pointDisplayMode;
     syncSlider();
     draw();
   }
@@ -2578,9 +2866,21 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       const range = parseTimeField('221BC-207BC');
       return range.start === -220 && range.end === -206;
     });
+    add('parseTimeField: short numeric hyphen remains year range', () => {
+      const range = parseTimeField('1-2');
+      return range.start === 1 && range.end === 2;
+    });
     add('parseTimeField: single 1054', () => {
       const range = parseTimeField('1054');
       return range.start === 1054 && range.end === 1054;
+    });
+    add('parseTimeField: single month 1949-10', () => {
+      const range = parseTimeField('1949-10');
+      return range.startPrecision === 'month'
+        && range.endPrecision === 'month'
+        && range.startDate.year === 1949
+        && range.startDate.month === 10
+        && displayEventRange(range) === '1949-10';
     });
     add('parseTimeField: single date 1949-10-01', () => {
       const range = parseTimeField('1949-10-01');
@@ -2591,6 +2891,19 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         && range.startDate.day === 1
         && displayEventRange(range) === '1949-10-01';
     });
+    add('parseTimeField: single minute 1969-07-20 20:17', () => {
+      const range = parseTimeField('1969-07-20 20:17');
+      return range.startPrecision === 'minute'
+        && range.startDate.hour === 20
+        && range.startDate.minute === 17
+        && displayEventRange(range) === '1969-07-20 20:17';
+    });
+    add('parseTimeField: single second 1969-07-20T20:17:40', () => {
+      const range = parseTimeField('1969-07-20T20:17:40');
+      return range.startPrecision === 'second'
+        && range.startDate.second === 40
+        && displayEventRange(range) === '1969-07-20 20:17:40';
+    });
     add('parseTimeField: date range 1914-07-28~1918-11-11', () => {
       const range = parseTimeField('1914-07-28~1918-11-11');
       return range.startPrecision === 'date'
@@ -2598,10 +2911,22 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         && range.start < range.end
         && formatTimeValue(range.end, range.endPrecision, range.endDate) === '1918-11-11';
     });
+    add('parseTimeField: time range keeps minute precision', () => {
+      const range = parseTimeField('1969-07-20 20:17~1969-07-20 20:18');
+      return range.startPrecision === 'minute'
+        && range.endPrecision === 'minute'
+        && range.end > range.start
+        && formatTimeValue(range.end, range.endPrecision, range.endDate) === '1969-07-20 20:18';
+    });
     add('parseTimeField: rejects invalid date', () => parseTimeField('2021-02-29') === null);
+    add('parseTimeField: rejects invalid clock', () => parseTimeField('2021-02-28 24:00') === null);
     add('dateToTimeValue: leap year day offset', () => {
       const value = dateToTimeValue(2020, 3, 1);
       return Math.abs(value - (2020 + 60 / 366)) < 1e-12;
+    });
+    add('dateToTimeValue: hour offset', () => {
+      const value = dateToTimeValue(2020, 1, 1, 12);
+      return Math.abs(value - (2020 + 0.5 / 366)) < 1e-12;
     });
     add('parseTimeField: open interval 1949~', () => {
       const range = parseTimeField('1949~');
@@ -2610,6 +2935,41 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     add('parseTimeField: open date interval keeps date precision', () => {
       const range = parseTimeField('1949-10-01~');
       return range.startPrecision === 'date' && range.endPrecision === 'date' && range.end > range.start;
+    });
+    add('point display: year mode expands 1647~1647 to one year', () => {
+      const backup = snapshotState();
+      try {
+        state.pointDisplayMode = 'year';
+        const event = rowsToEvents(parseCSV('1647~1647,南明绍武帝', 'L'))[0];
+        const range = getEventDisplayRange(event);
+        return range.expandedPoint && range.start === 1647 && range.end === 1648 && displayEventRange(event) === '1647';
+      } finally {
+        restoreState(backup);
+      }
+    });
+    add('point display: point mode preserves circular points', () => {
+      const backup = snapshotState();
+      try {
+        state.pointDisplayMode = 'point';
+        const event = rowsToEvents(parseCSV('1647~1647,南明绍武帝', 'L'))[0];
+        const range = getEventDisplayRange(event);
+        return !range.expandedPoint && range.start === 1647 && range.end === 1647;
+      } finally {
+        restoreState(backup);
+      }
+    });
+    add('point display: date mode expands a single day', () => {
+      const backup = snapshotState();
+      try {
+        state.pointDisplayMode = 'date';
+        const event = rowsToEvents(parseCSV('1949-10-01,中华人民共和国成立', 'L'))[0];
+        const range = getEventDisplayRange(event);
+        return range.expandedPoint
+          && formatTimeValue(range.start, 'date') === '1949-10-01'
+          && formatTimeValue(range.end, 'date') === '1949-10-02';
+      } finally {
+        restoreState(backup);
+      }
     });
     add('parseCSV: split by \\n', () => parseCSV('1~2,A\n3~4,B', 'L').length === 2);
     add('parseCSV: quoted comma in title', () => parseCSV('1~2,"A,B"', 'L')[0].title === 'A,B');
@@ -2744,6 +3104,18 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     add('chooseCalendarTick: day ticks at close zoom', () => {
       const tick = chooseCalendarTick(50000);
       return tick.unit === 'day' && tick.step === 1;
+    });
+    add('chooseCalendarTick: hour ticks inside a day', () => {
+      const tick = chooseCalendarTick(100000);
+      return tick.unit === 'hour';
+    });
+    add('chooseCalendarTick: minute ticks at high zoom', () => {
+      const tick = chooseCalendarTick(10000000);
+      return tick.unit === 'minute';
+    });
+    add('chooseCalendarTick: second ticks at highest zoom', () => {
+      const tick = chooseCalendarTick(1000000000);
+      return tick.unit === 'second';
     });
     add('setViewToSpan: supports geological scale', () => {
       const backup = snapshotState();
