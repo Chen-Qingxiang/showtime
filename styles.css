@@ -392,6 +392,33 @@ body.side-collapsed .side-drawer::before {
   color: #ffb4c0;
 }
 
+#eventTooltip {
+  position: fixed;
+  display: none;
+  max-width: min(360px, calc(100vw - 24px));
+  z-index: 25;
+  pointer-events: none;
+  background: rgba(10, 13, 18, 0.96);
+  color: #e6edf3;
+  border: 1px solid #34507a;
+  border-radius: 8px;
+  padding: 9px 11px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.48);
+  font-size: 12px;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
+.event-tooltip-title {
+  margin-bottom: 5px;
+  color: #ffffff;
+  font-weight: 650;
+}
+
+.event-tooltip-meta {
+  color: #a9b8cf;
+}
+
 .color-swatches {
   display: grid;
   grid-template-columns: repeat(6, 1fr);

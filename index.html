@@ -22,6 +22,7 @@
           <option value="time">全部点显示为区间</option>
         </select>
       </label>
+      <label><input id="hoverTooltip" type="checkbox" checked /> 事件悬浮气泡</label>
       <label>内置示例：
         <select id="exampleSelect"></select>
       </label>
@@ -117,6 +118,7 @@
             <li>顶部“范围预设”：快速切到人类史 / 地质史 / 宇宙史</li>
             <li>在左侧图层名区域按住拖动：调整图层顺序</li>
             <li><span class="kbd">右键</span> 图层名：重命名、隐藏、改颜色、删除</li>
+            <li>开启顶部“事件悬浮气泡”后，鼠标悬浮事件块可查看完整标题和时间</li>
             <li>双击画布或点“重置视图”：恢复视图</li>
           </ul>
         </div>
@@ -147,6 +149,7 @@
     <button id="menuColorReset" class="secondary">恢复默认颜色</button>
     <button id="menuColorCancel">取消</button>
   </div>
+  <div id="eventTooltip" role="tooltip"></div>
   <div id="toast"></div>
 
   <script src="app.js"></script>
