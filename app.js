@@ -2646,7 +2646,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function handleWheel(event) {
+    if (!ui.canvas) return;
     const rect = ui.canvas.getBoundingClientRect();
+    const insideCanvas = event.clientX >= rect.left && event.clientX <= rect.right
+      && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    if (!insideCanvas) return;
     const centerX = rect.width / 2;
     const mouseX = event.clientX - rect.left;
     if (mouseX < state.leftPad) return;
