@@ -2651,12 +2651,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     const insideCanvas = event.clientX >= rect.left && event.clientX <= rect.right
       && event.clientY >= rect.top && event.clientY <= rect.bottom;
     if (!insideCanvas) return;
-    const centerX = rect.width / 2;
     const mouseX = event.clientX - rect.left;
     if (mouseX < state.leftPad) return;
     event.preventDefault();
     const factor = Math.pow(1.0015, -event.deltaY);
-    applyZoom(centerX, factor);
+    applyZoom(mouseX, factor);
   }
 
   function showLayerMenu(x, y, layer) {
