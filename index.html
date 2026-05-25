@@ -9,41 +9,70 @@
 <body>
   <header>
     <div class="bar">
-      <label><span class="pill">步骤 1</span>CSV 文件（两列：time,title；layer 取自文件名）：</label>
-      <input id="file" type="file" accept=".csv,text/csv" />
-      <button id="btn-load">加载左侧文本</button>
-      <label><input id="mergeSameSource" type="checkbox" checked /> 同源追加到同一图层</label>
-      <label>点事件显示：
-        <select id="pointDisplayMode">
-          <option value="point">保持圆点</option>
-          <option value="year" selected>年点显示为全年</option>
-          <option value="month">年/月点显示为区间</option>
-          <option value="date">年/月/日点显示为区间</option>
-          <option value="time">全部点显示为区间</option>
-        </select>
-      </label>
-      <label><input id="hoverTooltip" type="checkbox" checked /> 事件悬浮气泡</label>
-      <label>内置示例：
-        <select id="exampleSelect"></select>
-      </label>
-      <button id="btn-load-example">加载示例</button>
-      <label>背景库：
-        <select id="backgroundSelect"></select>
-      </label>
-      <button id="btn-load-background">加载背景</button>
-      <button id="btn-load-recommended-background">加载推荐背景</button>
-      <div style="flex:1"></div>
-      <label><span class="pill">步骤 2</span>页面滚动 / 拖拽平移</label>
-      <label>缩放：<input id="zoomSlider" type="range" min="0" max="1000" step="1" value="650"></label>
-      <span id="zoomReadout" class="zoom-readout">1 px / 年</span>
-      <button id="btn-reset">重置视图</button>
-      <div class="range-presets">
-        <label>范围预设：</label>
-        <button type="button" data-range-years="auto">贴合数据</button>
-        <button type="button" data-range-years="300000">人类史</button>
-        <button type="button" data-range-years="4600000000">地质史</button>
-        <button type="button" data-range-years="13800000000">宇宙史</button>
+      <div class="toolbar-menus">
+        <details class="toolbar-menu">
+          <summary>添加图层</summary>
+          <div class="menu-panel">
+            <label class="menu-file-picker">
+              <input id="file" type="file" accept=".csv,text/csv" />
+              <span>上传 CSV</span>
+            </label>
+            <button id="btn-load" type="button">加载左侧文本</button>
+            <label class="menu-check"><input id="mergeSameSource" type="checkbox" checked /> 同源追加到同一图层</label>
+          </div>
+        </details>
+
+        <details class="toolbar-menu toolbar-menu-wide">
+          <summary>背景</summary>
+          <div class="menu-panel">
+            <label class="menu-field">
+              <span>内置示例</span>
+              <select id="exampleSelect"></select>
+            </label>
+            <button id="btn-load-example" type="button">加载示例</button>
+            <label class="menu-field">
+              <span>背景库</span>
+              <select id="backgroundSelect"></select>
+            </label>
+            <button id="btn-load-background" type="button">加载背景</button>
+            <button id="btn-load-recommended-background" type="button">加载推荐背景</button>
+          </div>
+        </details>
+
+        <details class="toolbar-menu">
+          <summary>显示</summary>
+          <div class="menu-panel">
+            <label class="menu-field">
+              <span>点事件显示</span>
+              <select id="pointDisplayMode">
+                <option value="point">保持圆点</option>
+                <option value="year" selected>年点显示为全年</option>
+                <option value="month">年/月点显示为区间</option>
+                <option value="date">年/月/日点显示为区间</option>
+                <option value="time">全部点显示为区间</option>
+              </select>
+            </label>
+            <label class="menu-check"><input id="hoverTooltip" type="checkbox" checked /> 事件悬浮气泡</label>
+          </div>
+        </details>
+
+        <details class="toolbar-menu">
+          <summary>范围</summary>
+          <div class="menu-panel range-presets">
+            <button type="button" data-range-years="auto">贴合数据</button>
+            <button type="button" data-range-years="300000">人类史</button>
+            <button type="button" data-range-years="4600000000">地质史</button>
+            <button type="button" data-range-years="13800000000">宇宙史</button>
+          </div>
+        </details>
       </div>
+      <div class="toolbar-spacer"></div>
+      <label class="zoom-control">
+        <span>缩放</span>
+        <input id="zoomSlider" type="range" min="0" max="1000" step="1" value="650">
+      </label>
+      <span id="zoomReadout" class="zoom-readout">1 px / 年</span>
+      <button id="btn-reset" type="button">重置视图</button>
     </div>
   </header>
 
@@ -100,10 +129,10 @@
           <ul>
             <li>上传本地 CSV：图层名取自文件名</li>
             <li>点击“加载左侧文本”：内容会进入 <code>文本</code> 图层</li>
-            <li>顶部“内置示例”可直接加载预置数据</li>
-            <li>顶部“背景库”可叠加通用参照层，“加载推荐背景”会按当前主题和时间范围自动选几层</li>
+            <li>顶部“背景”菜单可加载内置示例和背景库</li>
+            <li>“加载推荐背景”会按当前主题和时间范围自动选几层</li>
             <li>勾选“同源追加到同一图层”时，重复导入会叠加到原图层</li>
-            <li>“点事件显示”可把 <code>1647~1647</code> 这类单年点显示为全年条，减少长标题挤在圆点后的重叠</li>
+            <li>“显示”菜单里的点事件选项可把 <code>1647~1647</code> 这类单年点显示为全年条，减少长标题挤在圆点后的重叠</li>
           </ul>
         </div>
 
@@ -115,10 +144,10 @@
             <li><span class="kbd">拖拽</span> 时间轴：左右平移</li>
             <li><span class="kbd">滚轮</span>（时间轴区域内）：围绕鼠标位置缩放</li>
             <li><span class="kbd">滚轮</span>（左侧图层名区域）：页面上下滚动</li>
-            <li>顶部“范围预设”：快速切到人类史 / 地质史 / 宇宙史</li>
+            <li>顶部“范围”菜单：快速切到人类史 / 地质史 / 宇宙史</li>
             <li>在左侧图层名区域按住拖动：调整图层顺序</li>
             <li><span class="kbd">右键</span> 图层名：重命名、隐藏、改颜色、删除</li>
-            <li>开启顶部“事件悬浮气泡”后，鼠标悬浮事件块可查看完整标题和时间</li>
+            <li>开启“显示”菜单里的事件悬浮气泡后，鼠标悬浮事件块可查看完整标题和时间</li>
             <li>双击画布或点“重置视图”：恢复视图</li>
           </ul>
         </div>
