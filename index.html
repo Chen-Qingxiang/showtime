@@ -14,8 +14,8 @@
           <summary>添加图层</summary>
           <div class="menu-panel">
             <label class="menu-file-picker">
-              <input id="file" type="file" accept=".csv,text/csv" />
-              <span>上传 CSV</span>
+              <input id="file" type="file" accept=".csv,text/csv" multiple />
+              <span>上传 CSV（可多选）</span>
             </label>
             <button id="btn-load" type="button">加载左侧文本</button>
             <label class="menu-check"><input id="mergeSameSource" type="checkbox" checked /> 同源追加到同一图层</label>
@@ -127,7 +127,7 @@
         <div class="hint-block">
           <div class="hint-title">导入方式</div>
           <ul>
-            <li>上传本地 CSV：图层名取自文件名</li>
+            <li>上传本地 CSV：可一次选择多个文件，每个文件作为独立图层，图层名取自文件名</li>
             <li>点击“加载左侧文本”：内容会进入 <code>文本</code> 图层</li>
             <li>顶部“背景”菜单可加载内置示例和背景库</li>
             <li>“加载推荐背景”会按当前主题和时间范围自动选几层</li>
