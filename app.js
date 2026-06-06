@@ -52,6 +52,13 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR;
   const EVENT_TOOLTIP_OFFSET = 14;
   const EVENT_HIT_MIN_WIDTH = 10;
+  const MOBILE_BREAKPOINT = 720;
+  const DESKTOP_LEFT_PAD = 80;
+  const MOBILE_LEFT_PAD = 72;
+  const DESKTOP_RIGHT_PAD = 20;
+  const MOBILE_RIGHT_PAD = 12;
+  const DESKTOP_LANE_HEIGHT = 26;
+  const MOBILE_LANE_HEIGHT = 30;
   const LAYER_COLOR_PRESETS = [
     '#3ea6ff', '#56c271', '#f7b538', '#ff7a59', '#ff5d8f', '#b27cff',
     '#27c1b8', '#7a8cff', '#9ccc65', '#d4a017', '#c86bfa', '#ef476f',
@@ -891,6 +898,18 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   };
 
   const pointer = { isPanning: false, lastX: 0, lastY: 0 };
+  const touchState = {
+    mode: null,
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    hasMoved: false,
+    longPressTimer: null,
+    layer: null,
+    pinchDistance: 0,
+    pinchCenterX: 0,
+  };
 
   function init() {
     if (!cacheDomHandles()) {
@@ -913,6 +932,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     initBackgroundSelector();
     buildColorSwatches();
     window.addEventListener('resize', resizeCanvas);
+    window.visualViewport?.addEventListener('resize', resizeCanvas);
     resizeCanvas();
     loadCsvTextarea();
     runSelfTests();
@@ -1569,12 +1589,30 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return total;
   }
 
+  function isMobileViewport(width = window.innerWidth) {
+    return width <= MOBILE_BREAKPOINT;
+  }
+
+  function syncResponsiveCanvasMetrics() {
+    const mobile = isMobileViewport();
+    state.leftPad = mobile ? MOBILE_LEFT_PAD : DESKTOP_LEFT_PAD;
+    state.rightPad = mobile ? MOBILE_RIGHT_PAD : DESKTOP_RIGHT_PAD;
+    state.laneHeight = mobile ? MOBILE_LANE_HEIGHT : DESKTOP_LANE_HEIGHT;
+  }
+
   function getMinimumCanvasHeight() {
     const headerHeight = document.querySelector('header')?.offsetHeight || 0;
-    return Math.max(480, window.innerHeight - headerHeight);
+    const visualHeight = window.visualViewport?.height || window.innerHeight;
+    const mobile = isMobileViewport();
+    const fallback = mobile ? 420 : 480;
+    const viewportShare = mobile ? visualHeight * 0.72 : visualHeight - headerHeight;
+    return Math.max(fallback, viewportShare);
   }
 
   function syncCanvasSize() {
+    syncResponsiveCanvasMetrics();
+    const headerHeight = document.querySelector('header')?.offsetHeight || 0;
+    document.documentElement.style.setProperty('--mobile-header-height', `${headerHeight}px`);
     const targetHeight = Math.max(getMinimumCanvasHeight(), getContentHeight());
     ui.canvas.style.height = `${targetHeight}px`;
     const rect = ui.canvas.getBoundingClientRect();
@@ -2698,6 +2736,10 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     window.addEventListener('mousemove', handleMouseMove);
     ui.canvas.addEventListener('mouseleave', handleMouseLeave);
     ui.canvas.addEventListener('wheel', handleWheel, { passive: false });
+    ui.canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    ui.canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    ui.canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    ui.canvas.addEventListener('touchcancel', handleTouchCancel);
     ui.canvas.addEventListener('dblclick', resetView);
     ui.canvas.addEventListener('contextmenu', handleContextMenu);
 
@@ -2942,6 +2984,170 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     event.preventDefault();
     const factor = Math.pow(1.0015, -event.deltaY);
     applyZoom(mouseX, factor);
+  }
+
+  function getTouchPoint(touch) {
+    const rect = ui.canvas.getBoundingClientRect();
+    return {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top,
+    };
+  }
+
+  function getTouchDistance(touchA, touchB) {
+    return Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY);
+  }
+
+  function getTouchCenter(touchA, touchB) {
+    const rect = ui.canvas.getBoundingClientRect();
+    return {
+      clientX: (touchA.clientX + touchB.clientX) / 2,
+      clientY: (touchA.clientY + touchB.clientY) / 2,
+      x: (touchA.clientX + touchB.clientX) / 2 - rect.left,
+      y: (touchA.clientY + touchB.clientY) / 2 - rect.top,
+    };
+  }
+
+  function clearTouchLongPress() {
+    if (!touchState.longPressTimer) return;
+    window.clearTimeout(touchState.longPressTimer);
+    touchState.longPressTimer = null;
+  }
+
+  function resetTouchState() {
+    clearTouchLongPress();
+    touchState.mode = null;
+    touchState.layer = null;
+    touchState.hasMoved = false;
+    touchState.pinchDistance = 0;
+    touchState.pinchCenterX = 0;
+  }
+
+  function findLayerAtCanvasPoint(x, y) {
+    if (x >= state.leftPad) return null;
+    for (const [layer, box] of state.layerRects) {
+      if (y >= box.top && y <= box.top + box.height) return layer;
+    }
+    return null;
+  }
+
+  function handleTouchStart(event) {
+    hideLayerMenu();
+    hideColorMenu();
+    hideEventTooltip();
+    pointer.isPanning = false;
+
+    if (event.touches.length === 2) {
+      clearTouchLongPress();
+      const [first, second] = event.touches;
+      const center = getTouchCenter(first, second);
+      touchState.mode = 'pinch';
+      touchState.pinchDistance = getTouchDistance(first, second);
+      touchState.pinchCenterX = center.x;
+      event.preventDefault();
+      return;
+    }
+
+    if (event.touches.length !== 1) return;
+    const point = getTouchPoint(event.touches[0]);
+    touchState.mode = 'pending';
+    touchState.startX = point.x;
+    touchState.startY = point.y;
+    touchState.lastX = point.x;
+    touchState.lastY = point.y;
+    touchState.hasMoved = false;
+    touchState.layer = findLayerAtCanvasPoint(point.x, point.y);
+
+    if (touchState.layer) {
+      touchState.longPressTimer = window.setTimeout(() => {
+        if (touchState.mode !== 'pending' || touchState.hasMoved || !touchState.layer) return;
+        showLayerMenu(point.clientX, point.clientY, touchState.layer);
+        resetTouchState();
+      }, 520);
+    }
+  }
+
+  function handleTouchMove(event) {
+    if (event.touches.length === 2) {
+      const [first, second] = event.touches;
+      const center = getTouchCenter(first, second);
+      const nextDistance = getTouchDistance(first, second);
+      if (touchState.mode !== 'pinch') {
+        clearTouchLongPress();
+        touchState.mode = 'pinch';
+        touchState.pinchDistance = nextDistance;
+        touchState.pinchCenterX = center.x;
+        event.preventDefault();
+        return;
+      }
+      if (touchState.pinchDistance > 0 && nextDistance > 0) {
+        const panDx = center.x - touchState.pinchCenterX;
+        state.viewStart -= panDx / state.pxPerYear;
+        applyZoom(center.x, nextDistance / touchState.pinchDistance);
+      }
+      touchState.pinchDistance = nextDistance;
+      touchState.pinchCenterX = center.x;
+      event.preventDefault();
+      return;
+    }
+
+    if (event.touches.length !== 1 || !touchState.mode) return;
+    const point = getTouchPoint(event.touches[0]);
+    const totalDx = point.x - touchState.startX;
+    const totalDy = point.y - touchState.startY;
+
+    if (Math.hypot(totalDx, totalDy) > 8) {
+      touchState.hasMoved = true;
+      clearTouchLongPress();
+    }
+
+    if (touchState.mode === 'pending') {
+      if (Math.abs(totalDx) > 8 && Math.abs(totalDx) > Math.abs(totalDy)) {
+        touchState.mode = 'pan';
+      } else if (Math.abs(totalDy) > 8 && Math.abs(totalDy) > Math.abs(totalDx)) {
+        touchState.mode = 'scroll';
+      }
+    }
+
+    if (touchState.mode === 'pan') {
+      const dx = point.x - touchState.lastX;
+      state.viewStart -= dx / state.pxPerYear;
+      touchState.lastX = point.x;
+      touchState.lastY = point.y;
+      draw();
+      event.preventDefault();
+    }
+  }
+
+  function handleTouchEnd(event) {
+    clearTouchLongPress();
+    if (touchState.mode === 'pending' && !touchState.hasMoved && event.changedTouches.length) {
+      const point = getTouchPoint(event.changedTouches[0]);
+      const hit = findEventAtCanvasPoint(point.x, point.y);
+      if (hit) {
+        showEventTooltip(hit.event, point.clientX, point.clientY);
+        event.preventDefault();
+      }
+    }
+    if (event.touches.length === 0) {
+      resetTouchState();
+    } else if (event.touches.length === 1) {
+      const point = getTouchPoint(event.touches[0]);
+      touchState.mode = 'pending';
+      touchState.startX = point.x;
+      touchState.startY = point.y;
+      touchState.lastX = point.x;
+      touchState.lastY = point.y;
+      touchState.hasMoved = false;
+      touchState.layer = findLayerAtCanvasPoint(point.x, point.y);
+    }
+  }
+
+  function handleTouchCancel() {
+    resetTouchState();
+    hideEventTooltip();
   }
 
   function showLayerMenu(x, y, layer) {
@@ -3527,6 +3733,40 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       const text = ui.eventTooltip.textContent || '';
       hideEventTooltip();
       return text.includes('短事件') && text.includes('时间：2000') && !text.includes('图层：');
+    });
+    add('responsive metrics: mobile viewport uses compact pads and touch lanes', () => {
+      const backup = {
+        leftPad: state.leftPad,
+        rightPad: state.rightPad,
+        laneHeight: state.laneHeight,
+      };
+      try {
+        const mobile = isMobileViewport(390);
+        const desktop = isMobileViewport(1024);
+        return mobile && !desktop
+          && MOBILE_LEFT_PAD < DESKTOP_LEFT_PAD
+          && MOBILE_RIGHT_PAD < DESKTOP_RIGHT_PAD
+          && MOBILE_LANE_HEIGHT > DESKTOP_LANE_HEIGHT;
+      } finally {
+        state.leftPad = backup.leftPad;
+        state.rightPad = backup.rightPad;
+        state.laneHeight = backup.laneHeight;
+      }
+    });
+    add('touch helper: layer hit only inside label column', () => {
+      const backup = snapshotState();
+      try {
+        state.data = rowsToEvents(parseCSV('1~2,A', '触摸层'));
+        state.layerOrder = [];
+        rebuildFromState();
+        draw();
+        const box = state.layerRects.get('触摸层');
+        return !!box
+          && findLayerAtCanvasPoint(state.leftPad - 4, box.top + 4) === '触摸层'
+          && findLayerAtCanvasPoint(state.leftPad + 4, box.top + 4) === null;
+      } finally {
+        restoreState(backup);
+      }
     });
     add('toolbar menus: close all except requested menu', () => {
       const menus = Array.from(document.querySelectorAll('.toolbar-menu'));
