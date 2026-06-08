@@ -61,6 +61,13 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   const MOBILE_LANE_HEIGHT = 30;
   const POINTER_PAN_LOCK_THRESHOLD = 8;
   const POINTER_VERTICAL_PAN_RATIO = 1.4;
+  const ZIP_CSV_IMPORT_LIMIT = 20;
+  const ZIP_SIGNATURE_END = 0x06054b50;
+  const ZIP_SIGNATURE_CENTRAL = 0x02014b50;
+  const ZIP_SIGNATURE_LOCAL = 0x04034b50;
+  const ZIP_UTF8_FLAG = 0x0800;
+  const ZIP_METHOD_STORED = 0;
+  const ZIP_METHOD_DEFLATE = 8;
   const LAYER_COLOR_PRESETS = [
     '#3ea6ff', '#56c271', '#f7b538', '#ff7a59', '#ff5d8f', '#b27cff',
     '#27c1b8', '#7a8cff', '#9ccc65', '#d4a017', '#c86bfa', '#ef476f',
@@ -1309,6 +1316,184 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return file.replace(/\.[^.]+$/, '');
   }
 
+  function isZipFile(file) {
+    const name = String(file?.name || '').toLowerCase();
+    const type = String(file?.type || '').toLowerCase();
+    return name.endsWith('.zip')
+      || type === 'application/zip'
+      || type === 'application/x-zip-compressed';
+  }
+
+  function isCsvPath(path) {
+    return /\.csv$/i.test(String(path || ''));
+  }
+
+  function compareImportNames(a, b) {
+    return String(a).localeCompare(String(b), 'zh-Hans-CN', {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  }
+
+  function isIgnoredZipEntryName(name) {
+    const parts = String(name || '').split('/').filter(Boolean);
+    if (!parts.length) return true;
+    if (parts.includes('__MACOSX')) return true;
+    return (parts[parts.length - 1] || '').startsWith('._');
+  }
+
+  function getZipCsvImportPlan(entries) {
+    const csvEntries = entries
+      .filter((entry) => !entry.isDirectory && isCsvPath(entry.name) && !isIgnoredZipEntryName(entry.name))
+      .sort((a, b) => compareImportNames(a.name, b.name));
+    return {
+      selected: csvEntries.slice(0, ZIP_CSV_IMPORT_LIMIT),
+      ignoredCsvCount: Math.max(0, csvEntries.length - ZIP_CSV_IMPORT_LIMIT),
+      totalCsvCount: csvEntries.length,
+    };
+  }
+
+  function readU16(view, offset) {
+    return view.getUint16(offset, true);
+  }
+
+  function readU32(view, offset) {
+    return view.getUint32(offset, true);
+  }
+
+  function findZipEndRecord(view) {
+    const maxCommentLength = 0xffff;
+    const minOffset = Math.max(0, view.byteLength - 22 - maxCommentLength);
+    for (let offset = view.byteLength - 22; offset >= minOffset; offset -= 1) {
+      if (readU32(view, offset) === ZIP_SIGNATURE_END) return offset;
+    }
+    throw new Error('不是有效的 ZIP 文件');
+  }
+
+  function decodeZipEntryName(bytes) {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+
+  function parseZipCentralDirectory(arrayBuffer) {
+    const view = new DataView(arrayBuffer);
+    const endOffset = findZipEndRecord(view);
+    const entryCount = readU16(view, endOffset + 10);
+    const centralDirectorySize = readU32(view, endOffset + 12);
+    const centralDirectoryOffset = readU32(view, endOffset + 16);
+
+    if (entryCount === 0xffff || centralDirectorySize === 0xffffffff || centralDirectoryOffset === 0xffffffff) {
+      throw new Error('暂不支持 ZIP64 文件');
+    }
+
+    const entries = [];
+    let offset = centralDirectoryOffset;
+    const end = centralDirectoryOffset + centralDirectorySize;
+    while (entries.length < entryCount && offset < end) {
+      if (readU32(view, offset) !== ZIP_SIGNATURE_CENTRAL) {
+        throw new Error('ZIP 中央目录损坏');
+      }
+
+      const compressionMethod = readU16(view, offset + 10);
+      const compressedSize = readU32(view, offset + 20);
+      const uncompressedSize = readU32(view, offset + 24);
+      const fileNameLength = readU16(view, offset + 28);
+      const extraLength = readU16(view, offset + 30);
+      const commentLength = readU16(view, offset + 32);
+      const localHeaderOffset = readU32(view, offset + 42);
+      const nameStart = offset + 46;
+      const nameBytes = new Uint8Array(arrayBuffer, nameStart, fileNameLength);
+      const name = decodeZipEntryName(nameBytes);
+
+      if (compressedSize === 0xffffffff || uncompressedSize === 0xffffffff || localHeaderOffset === 0xffffffff) {
+        throw new Error('暂不支持 ZIP64 文件');
+      }
+
+      entries.push({
+        name,
+        compressionMethod,
+        compressedSize,
+        uncompressedSize,
+        localHeaderOffset,
+        isDirectory: name.endsWith('/'),
+      });
+      offset = nameStart + fileNameLength + extraLength + commentLength;
+    }
+
+    return entries;
+  }
+
+  async function inflateRawBytes(bytes) {
+    if (typeof DecompressionStream !== 'function') {
+      throw new Error('当前浏览器不支持解压缩 ZIP 中的压缩文件');
+    }
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  async function readZipEntryBytes(arrayBuffer, entry) {
+    const view = new DataView(arrayBuffer);
+    const offset = entry.localHeaderOffset;
+    if (readU32(view, offset) !== ZIP_SIGNATURE_LOCAL) {
+      throw new Error('ZIP 本地文件头损坏');
+    }
+    const fileNameLength = readU16(view, offset + 26);
+    const extraLength = readU16(view, offset + 28);
+    const dataStart = offset + 30 + fileNameLength + extraLength;
+    const compressedBytes = new Uint8Array(arrayBuffer, dataStart, entry.compressedSize);
+
+    if (entry.compressionMethod === ZIP_METHOD_STORED) return compressedBytes.slice();
+    if (entry.compressionMethod === ZIP_METHOD_DEFLATE) return inflateRawBytes(compressedBytes);
+    throw new Error(`暂不支持 ZIP 压缩方式 ${entry.compressionMethod}`);
+  }
+
+  async function readZipEntryText(arrayBuffer, entry) {
+    const bytes = await readZipEntryBytes(arrayBuffer, entry);
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+
+  async function getUploadCsvSources(file) {
+    const fileName = file?.name || '文件.csv';
+    if (!isZipFile(file)) {
+      return {
+        sources: [{
+          fileName,
+          baseLayerName: basenameWithoutExt(fileName || '文件'),
+          readText: async () => {
+            if (typeof file?.text !== 'function') throw new Error('浏览器无法读取这个文件');
+            return file.text();
+          },
+        }],
+        failed: [],
+        ignoredCsvCount: 0,
+      };
+    }
+
+    try {
+      if (typeof file.arrayBuffer !== 'function') throw new Error('浏览器无法读取这个 ZIP 文件');
+      const arrayBuffer = await file.arrayBuffer();
+      const entries = parseZipCentralDirectory(arrayBuffer);
+      const plan = getZipCsvImportPlan(entries);
+      const failed = plan.totalCsvCount
+        ? []
+        : [{ fileName, reason: 'ZIP 中没有可导入的 CSV 文件' }];
+      return {
+        sources: plan.selected.map((entry) => ({
+          fileName: `${fileName}/${entry.name}`,
+          baseLayerName: basenameWithoutExt(entry.name),
+          readText: () => readZipEntryText(arrayBuffer, entry),
+        })),
+        failed,
+        ignoredCsvCount: plan.ignoredCsvCount,
+      };
+    } catch (error) {
+      return {
+        sources: [],
+        failed: [{ fileName, reason: error?.message || String(error) }],
+        ignoredCsvCount: 0,
+      };
+    }
+  }
+
   function resolveLayerName(baseLayerName) {
     const base = baseLayerName || DEFAULT_LAYER_NAME;
     if (!ui.mergeSameSource || ui.mergeSameSource.checked) return base;
@@ -1343,11 +1528,14 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return nextAvailableLayerName(baseLayerName, reservedLayerNames);
   }
 
-  function formatCsvImportToast(loadedFiles) {
-    if (loadedFiles.length === 1) return `已加载 CSV：${loadedFiles[0].layerName}`;
+  function formatCsvImportToast(loadedFiles, ignoredCsvCount = 0) {
+    const ignoredText = ignoredCsvCount
+      ? `；另有 ${ignoredCsvCount} 个 ZIP 内 CSV 超出 ${ZIP_CSV_IMPORT_LIMIT} 个上限，已忽略`
+      : '';
+    if (loadedFiles.length === 1) return `已加载 CSV：${loadedFiles[0].layerName}${ignoredText}`;
     const preview = loadedFiles.slice(0, 3).map((item) => item.layerName).join('、');
     const suffix = loadedFiles.length > 3 ? '...' : '';
-    return `已加载 ${loadedFiles.length} 个 CSV 图层：${preview}${suffix}`;
+    return `已加载 ${loadedFiles.length} 个 CSV 图层：${preview}${suffix}${ignoredText}`;
   }
 
   function formatCsvImportFailureMessage(failedFiles) {
@@ -1356,7 +1544,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       .map((item) => `• ${item.fileName}：${item.reason}`)
       .join('\n');
     const suffix = failedFiles.length > 8 ? `\n• 另有 ${failedFiles.length - 8} 个文件未加载` : '';
-    return `以下 CSV 未能加载：\n${preview}${suffix}\n\n${CSV_IMPORT_HELP_TEXT}`;
+    return `以下文件未能加载为时间轴：\n${preview}${suffix}\n\n${CSV_IMPORT_HELP_TEXT}`;
   }
 
   function rowsToEvents(rows) {
@@ -2476,32 +2664,36 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     const loaded = [];
     const failed = [];
     const importedEvents = [];
+    let ignoredCsvCount = 0;
 
     for (const file of files) {
-      const fileName = file.name || '文件.csv';
-      const baseLayerName = basenameWithoutExt(fileName || '文件');
-      const layerName = resolveLayerNameForFileBatch(baseLayerName, reservedLayerNames);
-      try {
-        if (typeof file.text !== 'function') throw new Error('浏览器无法读取这个文件');
-        const text = await file.text();
-        const events = rowsToEvents(parseCSV(text, layerName));
-        if (!events.length) {
-          failed.push({ fileName, reason: '未解析到任何事件' });
-          continue;
+      const batch = await getUploadCsvSources(file);
+      failed.push(...batch.failed);
+      ignoredCsvCount += batch.ignoredCsvCount || 0;
+
+      for (const source of batch.sources) {
+        const layerName = resolveLayerNameForFileBatch(source.baseLayerName, reservedLayerNames);
+        try {
+          const text = await source.readText();
+          const events = rowsToEvents(parseCSV(text, layerName));
+          if (!events.length) {
+            failed.push({ fileName: source.fileName, reason: '未解析到任何事件' });
+            continue;
+          }
+          reservedLayerNames.add(layerName);
+          importedEvents.push(...events);
+          loaded.push({ fileName: source.fileName, layerName, count: events.length });
+        } catch (error) {
+          failed.push({
+            fileName: source.fileName,
+            reason: error?.message || String(error),
+          });
         }
-        reservedLayerNames.add(layerName);
-        importedEvents.push(...events);
-        loaded.push({ fileName, layerName, count: events.length });
-      } catch (error) {
-        failed.push({
-          fileName,
-          reason: error?.message || String(error),
-        });
       }
     }
 
     if (importedEvents.length) ingest(importedEvents);
-    return { loaded, failed };
+    return { loaded, failed, ignoredCsvCount };
   }
 
   function initExampleSelector() {
@@ -2785,7 +2977,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ui.fileInput?.addEventListener('change', async (event) => {
       const result = await loadLocalCsvFiles(event.target.files);
       event.target.value = '';
-      if (result.loaded.length) toast(formatCsvImportToast(result.loaded));
+      if (result.loaded.length) {
+        toast(formatCsvImportToast(result.loaded, result.ignoredCsvCount));
+      } else if (result.ignoredCsvCount) {
+        toast(`ZIP 内 CSV 最多导入 ${ZIP_CSV_IMPORT_LIMIT} 个，已忽略 ${result.ignoredCsvCount} 个`);
+      }
       if (result.failed.length) alert(formatCsvImportFailureMessage(result.failed));
       closeToolbarMenus();
     });
@@ -3376,12 +3572,124 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
   function runSelfTests() {
     const results = [];
+    const pending = [];
     function add(name, fn) {
+      const result = { name, ok: false, err: '' };
+      results.push(result);
       try {
-        results.push({ name, ok: !!fn() });
+        const value = fn();
+        if (value && typeof value.then === 'function') {
+          pending.push(value
+            .then((ok) => {
+              result.ok = !!ok;
+            })
+            .catch((error) => {
+              result.err = String(error);
+            }));
+        } else {
+          result.ok = !!value;
+        }
       } catch (error) {
-        results.push({ name, ok: false, err: String(error) });
+        result.err = String(error);
       }
+    }
+
+    function report() {
+      const passed = results.filter((result) => result.ok).length;
+      const failed = results.length - passed;
+      const log = results
+        .map((result) => `${result.ok ? '✅' : '❌'} ${result.name}${result.err ? `\n   ${result.err}` : ''}`)
+        .join('\n');
+
+      console.log('[Timeline Self-tests]\n' + log);
+      if (ui.testLog) ui.testLog.textContent = log;
+      if (ui.testBadge) {
+        ui.testBadge.style.display = 'block';
+        ui.testBadge.textContent = `自测：${passed}/${results.length} 通过${failed ? '（有失败，点我看详情）' : ''}`;
+        ui.testBadge.onclick = () => {
+          if (!ui.testPanel) return;
+          ui.testPanel.style.display = ui.testPanel.style.display === 'none' ? 'block' : 'none';
+        };
+      }
+    }
+
+    function makeStoredZipForTests(files) {
+      const encoder = new TextEncoder();
+      const bytes = [];
+      const central = [];
+
+      function pushU16(value) {
+        bytes.push(value & 0xff, (value >>> 8) & 0xff);
+      }
+
+      function pushU32(value) {
+        bytes.push(
+          value & 0xff,
+          (value >>> 8) & 0xff,
+          (value >>> 16) & 0xff,
+          (value >>> 24) & 0xff
+        );
+      }
+
+      function pushBytes(values) {
+        for (const value of values) bytes.push(value);
+      }
+
+      for (const file of files) {
+        const nameBytes = encoder.encode(file.name);
+        const dataBytes = encoder.encode(file.text);
+        const localHeaderOffset = bytes.length;
+
+        pushU32(ZIP_SIGNATURE_LOCAL);
+        pushU16(20);
+        pushU16(ZIP_UTF8_FLAG);
+        pushU16(ZIP_METHOD_STORED);
+        pushU16(0);
+        pushU16(0);
+        pushU32(0);
+        pushU32(dataBytes.length);
+        pushU32(dataBytes.length);
+        pushU16(nameBytes.length);
+        pushU16(0);
+        pushBytes(nameBytes);
+        pushBytes(dataBytes);
+
+        central.push({ nameBytes, dataBytes, localHeaderOffset });
+      }
+
+      const centralDirectoryOffset = bytes.length;
+      for (const entry of central) {
+        pushU32(ZIP_SIGNATURE_CENTRAL);
+        pushU16(20);
+        pushU16(20);
+        pushU16(ZIP_UTF8_FLAG);
+        pushU16(ZIP_METHOD_STORED);
+        pushU16(0);
+        pushU16(0);
+        pushU32(0);
+        pushU32(entry.dataBytes.length);
+        pushU32(entry.dataBytes.length);
+        pushU16(entry.nameBytes.length);
+        pushU16(0);
+        pushU16(0);
+        pushU16(0);
+        pushU16(0);
+        pushU32(0);
+        pushU32(entry.localHeaderOffset);
+        pushBytes(entry.nameBytes);
+      }
+      const centralDirectorySize = bytes.length - centralDirectoryOffset;
+
+      pushU32(ZIP_SIGNATURE_END);
+      pushU16(0);
+      pushU16(0);
+      pushU16(central.length);
+      pushU16(central.length);
+      pushU32(centralDirectorySize);
+      pushU32(centralDirectoryOffset);
+      pushU16(0);
+
+      return new Uint8Array(bytes).buffer;
     }
 
     add('parseYearToken: -221 → -221', () => parseYearToken(-221) === -221);
@@ -3504,6 +3812,50 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     add('parseCSV: quoted comma in title', () => parseCSV('1~2,"A,B"', 'L')[0].title === 'A,B');
     add('parseCSV: escaped quote in title', () => parseCSV('1~2,"He said ""Hi"""', 'L')[0].title === 'He said "Hi"');
     add('rowsToEvents: pipeline basic', () => rowsToEvents(parseCSV('1~2,A', 'L')).length === 1);
+    add('zip csv import plan: sorts and caps at 20', () => {
+      const entries = Array.from({ length: 22 }, (_, index) => ({
+        name: `${String(22 - index).padStart(2, '0')}.csv`,
+        isDirectory: false,
+      }));
+      entries.push(
+        { name: 'notes.txt', isDirectory: false },
+        { name: '__MACOSX/._01.csv', isDirectory: false }
+      );
+      const plan = getZipCsvImportPlan(entries);
+      return plan.selected.length === 20
+        && plan.selected[0].name === '01.csv'
+        && plan.selected[19].name === '20.csv'
+        && plan.ignoredCsvCount === 2
+        && plan.totalCsvCount === 22;
+    });
+    add('zip reader: extracts stored csv entries', async () => {
+      const buffer = makeStoredZipForTests([
+        { name: 'notes.txt', text: 'ignored' },
+        { name: '02_later.csv', text: '2~3,B' },
+        { name: '01_first.csv', text: '1~2,A' },
+      ]);
+      const entries = parseZipCentralDirectory(buffer);
+      const plan = getZipCsvImportPlan(entries);
+      const text = await readZipEntryText(buffer, plan.selected[0]);
+      return plan.selected.length === 2
+        && plan.selected[0].name === '01_first.csv'
+        && plan.selected[1].name === '02_later.csv'
+        && rowsToEvents(parseCSV(text, 'L')).length === 1;
+    });
+    add('zip upload source: expands csv files', async () => {
+      const buffer = makeStoredZipForTests([
+        { name: '02_later.csv', text: '2~3,B' },
+        { name: '01_first.csv', text: '1~2,A' },
+      ]);
+      const file = new File([buffer], 'bundle.zip', { type: 'application/zip' });
+      const batch = await getUploadCsvSources(file);
+      const text = await batch.sources[0].readText();
+      return batch.sources.length === 2
+        && batch.sources[0].fileName === 'bundle.zip/01_first.csv'
+        && batch.failed.length === 0
+        && batch.ignoredCsvCount === 0
+        && rowsToEvents(parseCSV(text, 'L')).length === 1;
+    });
     add('background library: includes core layers', () => {
       const ids = new Set(BACKGROUND_LIBRARY.map((entry) => entry.id));
       return BACKGROUND_LIBRARY.length >= 40
@@ -3817,21 +4169,10 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       return keptOnlySecond && menus.every((menu) => !menu.open);
     });
 
-    const passed = results.filter((result) => result.ok).length;
-    const failed = results.length - passed;
-    const log = results
-      .map((result) => `${result.ok ? '✅' : '❌'} ${result.name}${result.err ? `\n   ${result.err}` : ''}`)
-      .join('\n');
-
-    console.log('[Timeline Self-tests]\n' + log);
-    if (ui.testLog) ui.testLog.textContent = log;
-    if (ui.testBadge) {
-      ui.testBadge.style.display = 'block';
-      ui.testBadge.textContent = `自测：${passed}/${results.length} 通过${failed ? '（有失败，点我看详情）' : ''}`;
-      ui.testBadge.onclick = () => {
-        if (!ui.testPanel) return;
-        ui.testPanel.style.display = ui.testPanel.style.display === 'none' ? 'block' : 'none';
-      };
+    if (pending.length) {
+      Promise.all(pending).then(report);
+    } else {
+      report();
     }
   }
 
