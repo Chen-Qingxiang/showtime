@@ -59,6 +59,8 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   const MOBILE_RIGHT_PAD = 12;
   const DESKTOP_LANE_HEIGHT = 26;
   const MOBILE_LANE_HEIGHT = 30;
+  const POINTER_PAN_LOCK_THRESHOLD = 8;
+  const POINTER_VERTICAL_PAN_RATIO = 1.4;
   const LAYER_COLOR_PRESETS = [
     '#3ea6ff', '#56c271', '#f7b538', '#ff7a59', '#ff5d8f', '#b27cff',
     '#27c1b8', '#7a8cff', '#9ccc65', '#d4a017', '#c86bfa', '#ef476f',
@@ -897,7 +899,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     hoverTooltipEnabled: DEFAULT_HOVER_TOOLTIP_ENABLED,
   };
 
-  const pointer = { isPanning: false, lastX: 0, lastY: 0 };
+  const pointer = { mode: null, startX: 0, startY: 0, lastX: 0, lastY: 0 };
   const touchState = {
     mode: null,
     startX: 0,
@@ -2882,6 +2884,20 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ingest(events);
   }
 
+  function getPointerPanMode(dx, dy) {
+    if (Math.hypot(dx, dy) < POINTER_PAN_LOCK_THRESHOLD) return null;
+    if (Math.abs(dy) > Math.abs(dx) * POINTER_VERTICAL_PAN_RATIO) return 'vertical';
+    return 'horizontal';
+  }
+
+  function resetPointerPan() {
+    pointer.mode = null;
+    pointer.startX = 0;
+    pointer.startY = 0;
+    pointer.lastX = 0;
+    pointer.lastY = 0;
+  }
+
   function handleMouseDown(event) {
     hideLayerMenu();
     hideEventTooltip();
@@ -2902,10 +2918,13 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         }
       }
     }
-    pointer.isPanning = true;
+    pointer.mode = 'pending';
+    pointer.startX = event.clientX;
+    pointer.startY = event.clientY;
     pointer.lastX = event.clientX;
     pointer.lastY = event.clientY;
     ui.canvas.style.cursor = 'grabbing';
+    event.preventDefault();
   }
 
   function handleMouseMove(event) {
@@ -2921,13 +2940,26 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       return;
     }
 
-    if (pointer.isPanning) {
+    if (pointer.mode) {
       hideEventTooltip();
       const dx = event.clientX - pointer.lastX;
+      const dy = event.clientY - pointer.lastY;
+      if (pointer.mode === 'pending') {
+        const totalDx = event.clientX - pointer.startX;
+        const totalDy = event.clientY - pointer.startY;
+        const mode = getPointerPanMode(totalDx, totalDy);
+        if (!mode) return;
+        pointer.mode = mode;
+      }
       pointer.lastX = event.clientX;
       pointer.lastY = event.clientY;
-      state.viewStart -= dx / state.pxPerYear;
-      draw();
+      if (pointer.mode === 'vertical') {
+        window.scrollBy(0, -dy);
+      } else {
+        state.viewStart -= dx / state.pxPerYear;
+        draw();
+      }
+      event.preventDefault();
       return;
     }
 
@@ -2946,7 +2978,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
   function handleMouseUp() {
     ui.canvas.style.cursor = 'default';
-    pointer.isPanning = false;
+    resetPointerPan();
     if (!state.drag.active || !state.drag.layer) return;
 
     const layer = state.drag.layer;
@@ -2964,7 +2996,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function handleMouseLeave() {
-    pointer.isPanning = false;
+    resetPointerPan();
     hideEventTooltip();
     ui.canvas.style.cursor = 'default';
     if (!state.drag.active) return;
@@ -3037,7 +3069,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     hideLayerMenu();
     hideColorMenu();
     hideEventTooltip();
-    pointer.isPanning = false;
+    resetPointerPan();
 
     if (event.touches.length === 2) {
       clearTouchLongPress();
@@ -3604,6 +3636,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       } finally {
         restoreState(backup);
       }
+    });
+    add('pointer pan mode: locks vertical only for clear vertical intent', () => {
+      return getPointerPanMode(5, 5) === null
+        && getPointerPanMode(20, 10) === 'horizontal'
+        && getPointerPanMode(8, 9) === 'horizontal'
+        && getPointerPanMode(5, 9) === 'vertical';
     });
     add('zoom slider: logarithmic mapping round-trips', () => {
       const px = 0.000123;
