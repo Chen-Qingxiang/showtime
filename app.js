@@ -61,7 +61,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   const MOBILE_LANE_HEIGHT = 30;
   const POINTER_PAN_LOCK_THRESHOLD = 8;
   const POINTER_VERTICAL_PAN_RATIO = 1.4;
-  const ZIP_CSV_IMPORT_LIMIT = 20;
+  const ZIP_CSV_IMPORT_LIMIT = 100;
   const ZIP_SIGNATURE_END = 0x06054b50;
   const ZIP_SIGNATURE_CENTRAL = 0x02014b50;
   const ZIP_SIGNATURE_LOCAL = 0x04034b50;
@@ -3812,9 +3812,9 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     add('parseCSV: quoted comma in title', () => parseCSV('1~2,"A,B"', 'L')[0].title === 'A,B');
     add('parseCSV: escaped quote in title', () => parseCSV('1~2,"He said ""Hi"""', 'L')[0].title === 'He said "Hi"');
     add('rowsToEvents: pipeline basic', () => rowsToEvents(parseCSV('1~2,A', 'L')).length === 1);
-    add('zip csv import plan: sorts and caps at 20', () => {
-      const entries = Array.from({ length: 22 }, (_, index) => ({
-        name: `${String(22 - index).padStart(2, '0')}.csv`,
+    add('zip csv import plan: sorts and caps at 100', () => {
+      const entries = Array.from({ length: 102 }, (_, index) => ({
+        name: `${String(102 - index).padStart(2, '0')}.csv`,
         isDirectory: false,
       }));
       entries.push(
@@ -3822,11 +3822,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         { name: '__MACOSX/._01.csv', isDirectory: false }
       );
       const plan = getZipCsvImportPlan(entries);
-      return plan.selected.length === 20
+      return plan.selected.length === 100
         && plan.selected[0].name === '01.csv'
-        && plan.selected[19].name === '20.csv'
+        && plan.selected[99].name === '100.csv'
         && plan.ignoredCsvCount === 2
-        && plan.totalCsvCount === 22;
+        && plan.totalCsvCount === 102;
     });
     add('zip reader: extracts stored csv entries', async () => {
       const buffer = makeStoredZipForTests([
