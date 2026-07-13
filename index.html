@@ -1,276 +1,186 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0f16">
-  <title>ShowTime · 研究型多层时间轴</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22%23142d46%22/><text x=%226%22 y=%2221%22 fill=%22%2386c4ff%22 font-size=%2213%22>ST</text></svg>">
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Showtime Timeline · 多尺度历史时间轴</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <a class="skip-link" href="#timeline-canvas">跳到主时间轴</a>
-  <header class="app-header">
-    <div class="brand" aria-label="ShowTime 首页">
-      <span class="brand-mark">ST</span>
-      <span><strong>ShowTime</strong><small>研究型时间轴</small></span>
+  <header>
+    <div class="bar">
+      <div class="toolbar-menus">
+        <details class="toolbar-menu">
+          <summary>添加图层</summary>
+          <div class="menu-panel">
+            <label class="menu-file-picker">
+              <input id="file" type="file" accept=".csv,text/csv,.zip,application/zip,application/x-zip-compressed" multiple />
+              <span>上传 CSV / ZIP</span>
+            </label>
+            <button id="btn-load" type="button">加载左侧文本</button>
+            <label class="menu-check"><input id="mergeSameSource" type="checkbox" checked /> 同源追加到同一图层</label>
+          </div>
+        </details>
+
+        <details class="toolbar-menu toolbar-menu-wide">
+          <summary>背景</summary>
+          <div class="menu-panel">
+            <label class="menu-field">
+              <span>内置示例</span>
+              <select id="exampleSelect"></select>
+            </label>
+            <button id="btn-load-example" type="button">加载示例</button>
+            <label class="menu-field">
+              <span>背景库</span>
+              <select id="backgroundSelect"></select>
+            </label>
+            <button id="btn-load-background" type="button">加载背景</button>
+            <button id="btn-load-recommended-background" type="button">加载推荐背景</button>
+          </div>
+        </details>
+
+        <details class="toolbar-menu">
+          <summary>显示</summary>
+          <div class="menu-panel">
+            <label class="menu-field">
+              <span>点事件显示</span>
+              <select id="pointDisplayMode">
+                <option value="point">保持圆点</option>
+                <option value="year" selected>年点显示为全年</option>
+                <option value="month">年/月点显示为区间</option>
+                <option value="date">年/月/日点显示为区间</option>
+                <option value="time">全部点显示为区间</option>
+              </select>
+            </label>
+            <label class="menu-check"><input id="hoverTooltip" type="checkbox" checked /> 事件悬浮气泡</label>
+          </div>
+        </details>
+
+        <details class="toolbar-menu">
+          <summary>范围</summary>
+          <div class="menu-panel range-presets">
+            <button type="button" data-range-years="auto">贴合数据</button>
+            <button type="button" data-range-years="300000">人类史</button>
+            <button type="button" data-range-years="4600000000">地质史</button>
+            <button type="button" data-range-years="13800000000">宇宙史</button>
+          </div>
+        </details>
+      </div>
+      <div class="toolbar-spacer"></div>
+      <label class="zoom-control">
+        <span>缩放</span>
+        <input id="zoomSlider" type="range" min="0" max="1000" step="1" value="650">
+      </label>
+      <span id="zoomReadout" class="zoom-readout">1 px / 年</span>
+      <button id="btn-reset" type="button">重置视图</button>
     </div>
-    <nav class="toolbar" aria-label="主工具栏">
-      <details class="tool-menu" id="project-menu">
-        <summary>项目</summary>
-        <div class="tool-popover">
-          <button type="button" data-action="new-project">新建项目</button>
-          <label class="file-action"><input id="project-file" type="file" accept=".zip,.showtime.zip,application/zip"><span>打开项目</span></label>
-          <button type="button" data-action="save-workspace">保存项目</button>
-          <button type="button" data-action="save-as-workspace">另存项目</button>
-          <button type="button" data-action="open-example-project">打开“苏轼与北宋背景”</button>
-        </div>
-      </details>
-
-      <details class="tool-menu">
-        <summary>添加数据</summary>
-        <div class="tool-popover">
-          <label class="file-action"><input id="data-files" type="file" accept=".csv,text/csv,.zip,application/zip" multiple><span>添加 CSV / 旧 ZIP</span></label>
-          <button type="button" data-action="advanced-import">高级文本导入</button>
-          <label class="field compact"><span>同名图层</span><select id="duplicate-layer-mode"><option value="new">创建新图层</option><option value="merge">合并到现有图层</option></select></label>
-        </div>
-      </details>
-
-      <details class="tool-menu wide">
-        <summary>背景</summary>
-        <div class="tool-popover">
-          <label class="field"><span>本地背景库</span><select id="background-select"></select></label>
-          <button type="button" data-action="load-background">加载所选背景</button>
-          <button type="button" data-action="load-recommended">加载智能推荐</button>
-          <label class="field"><span>内置示例</span><select id="example-select"></select></label>
-          <button type="button" data-action="load-example">加载示例图层</button>
-        </div>
-      </details>
-
-      <details class="tool-menu">
-        <summary>显示</summary>
-        <div class="tool-popover">
-          <label class="field compact"><span>语义缩放</span><select id="lod-mode"><option value="auto">自动切换</option><option value="manual">手动显示</option></select></label>
-          <label class="field compact"><span>点事件</span><select id="point-display-mode"><option value="point">保持圆点</option><option value="year">年点显示为全年</option><option value="date">日期点显示为整日</option><option value="time">全部显示为区间</option></select></label>
-          <button type="button" data-action="toggle-left">折叠 / 展开左栏</button>
-          <button type="button" data-action="toggle-right">折叠 / 展开右栏</button>
-          <button type="button" data-action="toggle-diff">切换差异高亮</button>
-        </div>
-      </details>
-
-      <details class="tool-menu">
-        <summary>分析</summary>
-        <div class="tool-popover">
-          <button type="button" data-action="show-statistics-current">统计当前图层</button>
-          <button type="button" data-action="show-statistics-all">统计全部可见图层</button>
-          <label class="file-action"><input id="baseline-file" type="file" accept=".csv,.zip,application/zip"><span>加载版本 baseline</span></label>
-          <button type="button" data-action="show-diff">查看版本差异</button>
-        </div>
-      </details>
-
-      <details class="tool-menu">
-        <summary>保存 / 导出</summary>
-        <div class="tool-popover export-menu">
-          <button type="button" data-action="export-project">导出项目包（.showtime.zip）</button>
-          <button type="button" data-action="export-layer">当前图层 CSV</button>
-          <button type="button" data-action="export-filtered">筛选结果 CSV</button>
-          <button type="button" data-action="export-png">高分辨率 PNG</button>
-          <button type="button" data-action="export-svg">矢量 SVG</button>
-          <button type="button" data-action="export-quality">质检报告</button>
-          <button type="button" data-action="export-diff">差异报告</button>
-          <button type="button" data-action="share">生成分享链接</button>
-        </div>
-      </details>
-      <button class="toolbar-button" type="button" data-action="reset-view">重置视图</button>
-      <button class="toolbar-button icon-only" type="button" data-action="help" aria-label="打开帮助" title="帮助与快捷键">?</button>
-    </nav>
   </header>
 
-  <section class="search-strip" aria-label="全局搜索">
-    <button class="panel-toggle left" type="button" data-action="toggle-left" aria-label="切换左侧研究导航">☰</button>
-    <div class="search-box">
-      <span aria-hidden="true">⌕</span>
-      <input id="global-search" type="search" autocomplete="off" placeholder="搜索事件、人物、地点、标签或 1080~1085（按 / 聚焦）" aria-label="全局搜索">
-      <kbd>/</kbd>
-    </div>
-    <select id="search-scope" aria-label="搜索范围">
-      <option value="all">全部图层</option>
-      <option value="visible">可见图层</option>
-      <option value="current">当前图层</option>
-      <option value="primary">只搜主线</option>
-      <option value="background">只搜背景</option>
-    </select>
-    <button type="button" data-action="open-filters">过滤器 <span id="filter-count" class="count-badge" hidden>0</span></button>
-    <label class="inline-check"><input id="dim-unmatched" type="checkbox"> 无关事件变暗</label>
-    <label class="inline-check"><input id="only-matches" type="checkbox"> 只显示匹配</label>
-    <button type="button" data-action="clear-search" aria-label="清除搜索">清除</button>
-    <button class="panel-toggle right" type="button" data-action="toggle-right" aria-label="切换右侧详情栏">详情</button>
-  </section>
+  <div class="wrap">
+    <aside class="side">
+      <h3>CSV 文本（示例）</h3>
+      <textarea id="csvText" spellcheck="false"># time,title（两列；layer 由文件名决定，左侧文本默认层名“文本”）
+# 约定：范围用 ~ 分隔；支持年份、年月、日期或日内时间（例 1949-10-01 12:30:00）
+# 可用负数表示 BCE（例 -2070~-1600）
+# 若无结束（例如 1949~ 或 1949-10-01~），将自动补到当前年/日期
+-2070~-1600,夏
+-1600~-1046,商
+-1046~-256,周
+-221~-207,秦
+-202~8,西汉
+9~23,新
+25~220,东汉
+220~266,魏
+221~263,蜀汉
+222~280,吴
+266~316,西晋
+317~420,东晋
+420~589,南北朝
+581~618,隋
+618~907,唐
+690~705,武周
+907~960,五代
+907~979,十国
+916~1125,辽
+960~1127,北宋
+1127~1279,南宋
+1038~1227,西夏
+1115~1234,金
+1271~1368,元
+1368~1644,明
+1636~1912,清
+1912~1949,中华民国（大陆时期）
+1949~,中华人民共和国</textarea>
+      <div class="hint small">
+        <div class="hint-block">
+          <div class="hint-title">数据格式</div>
+          <ul>
+            <li><code>time,title</code> 两列即可，图层名默认取自文件名</li>
+            <li><code>start~end</code>：支持 <b>~ - — – － 〜 ～ 至 到</b>，也支持日期、日内时间、负数、<code>221BC</code>、<code>公元前221</code></li>
+            <li>日期/时间：<code>YYYY-MM</code>、<code>YYYY-MM-DD</code>、<code>YYYY-MM-DD HH:mm[:ss]</code></li>
+            <li>单点：<code>1054</code>、<code>1949-10</code>、<code>1949-10-01 12:30</code> 会视为单点事件</li>
+            <li>开区间：<code>1949~</code> 补到当前年份，<code>1949-10-01~</code> 补到当前日期；日内时间会保留对应精度</li>
+            <li>标题含逗号时请加双引号：<code>1942,"《春望》, 杜甫相关"</code></li>
+          </ul>
+        </div>
 
-  <div class="app-shell">
-    <aside class="research-nav" id="left-panel" aria-label="研究导航">
-      <section class="project-summary">
-        <div class="eyebrow">当前项目</div>
-        <h1 id="project-name">未命名研究</h1>
-        <p id="project-description">把专题时间线放入更大的历史背景中。</p>
-        <div class="project-meta"><span id="project-topic">未填写主题</span><span id="autosave-status" role="status">等待保存</span></div>
-        <button class="text-button" type="button" data-action="edit-project">编辑项目信息</button>
-      </section>
+        <div class="hint-block">
+          <div class="hint-title">导入方式</div>
+          <ul>
+            <li>上传本地 CSV / ZIP：CSV 可多选；ZIP 内前 100 个 CSV 会按文件名排序后作为独立图层导入</li>
+            <li>点击“加载左侧文本”：内容会进入 <code>文本</code> 图层</li>
+            <li>顶部“背景”菜单可加载内置示例和背景库</li>
+            <li>“加载推荐背景”会按当前主题和时间范围自动选几层</li>
+            <li>勾选“同源追加到同一图层”时，重复导入会叠加到原图层</li>
+            <li>“显示”菜单里的点事件选项可把 <code>1647~1647</code> 这类单年点显示为全年条，减少长标题挤在圆点后的重叠</li>
+          </ul>
+        </div>
 
-      <section class="nav-section grow">
-        <div class="section-heading"><h2>图层与分组</h2><button type="button" data-action="add-group" aria-label="新建图层分组">＋分组</button></div>
-        <div id="layer-groups" class="layer-groups" aria-live="polite"></div>
-      </section>
-
-      <section class="nav-section">
-        <div class="section-heading"><h2>已保存视图</h2><button type="button" data-action="save-view">＋保存</button></div>
-        <div id="saved-views" class="compact-list empty-hint">尚未保存视图</div>
-      </section>
-
-      <section class="nav-section">
-        <div class="section-heading"><h2>最近项目</h2><button type="button" data-action="refresh-recents" aria-label="刷新最近项目">↻</button></div>
-        <div id="recent-projects" class="compact-list empty-hint">没有最近项目</div>
-      </section>
+        <div class="hint-block">
+          <div class="hint-title">常用操作</div>
+          <ul>
+            <li>左栏右边缘把手：折叠 / 展开参考区</li>
+            <li>页面上下滚动：浏览更多图层</li>
+            <li><span class="kbd">拖拽</span> 时间轴：左右平移；上下意图明显时浏览更多图层</li>
+            <li><span class="kbd">滚轮</span>（时间轴区域内）：围绕鼠标位置缩放</li>
+            <li><span class="kbd">滚轮</span>（左侧图层名区域）：页面上下滚动</li>
+            <li>顶部“范围”菜单：快速切到人类史 / 地质史 / 宇宙史</li>
+            <li>在左侧图层名区域按住拖动：调整图层顺序</li>
+            <li><span class="kbd">右键</span> 图层名：重命名、隐藏、改颜色、删除</li>
+            <li>开启“显示”菜单里的事件悬浮气泡后，鼠标悬浮事件块可查看完整标题和时间</li>
+            <li>双击画布或点“重置视图”：恢复视图</li>
+          </ul>
+        </div>
+      </div>
     </aside>
-
-    <main class="timeline-main" aria-label="主时间轴区域">
-      <div class="view-status">
-        <div>
-          <strong id="view-range">—</strong>
-          <span id="view-span">—</span>
-          <span id="lod-status" class="status-pill">detailed</span>
-        </div>
-        <div class="view-actions">
-          <button type="button" data-action="zoom-out" aria-label="缩小">−</button>
-          <input id="zoom-slider" type="range" min="0" max="1000" value="500" aria-label="缩放级别">
-          <button type="button" data-action="zoom-in" aria-label="放大">＋</button>
-          <button type="button" data-action="add-second-probe">固定第二探针</button>
-          <button type="button" data-action="clear-probes">清除探针</button>
-        </div>
-      </div>
-      <div class="timeline-scroll" id="timeline-scroll">
-        <canvas id="timeline-canvas" tabindex="0" aria-label="可平移缩放的多层时间轴；点击固定时间探针，Shift 点击固定第二探针"></canvas>
-        <div id="event-tooltip" class="event-tooltip" role="tooltip" hidden></div>
-        <div id="timeline-empty" class="timeline-empty" hidden>
-          <strong>从一条专题时间线开始</strong>
-          <span>添加两列 <code>time,title</code> CSV，或打开完整示例项目。</span>
-          <div><button type="button" data-action="open-example-project">打开苏轼示例</button><button type="button" data-action="advanced-import">粘贴 CSV</button></div>
-        </div>
-      </div>
-      <section class="minimap-wrap" aria-label="全局小地图">
-        <div><strong>全局小地图</strong><span>拖动视窗或两侧边界</span></div>
-        <canvas id="minimap-canvas" aria-label="项目完整时间范围小地图"></canvas>
-      </section>
+    <main>
+      <button id="btn-side-drawer" class="side-drawer" type="button" aria-label="显示左栏" title="显示左栏"></button>
+      <canvas id="c"></canvas>
     </main>
-
-    <aside class="detail-panel" id="right-panel" aria-label="详情与分析">
-      <div class="detail-tabs" role="tablist" aria-label="详情页签">
-        <button role="tab" aria-selected="true" data-tab="details">事件</button>
-        <button role="tab" aria-selected="false" data-tab="probe">此时</button>
-        <button role="tab" aria-selected="false" data-tab="search">结果</button>
-        <button role="tab" aria-selected="false" data-tab="quality">质检</button>
-        <button role="tab" aria-selected="false" data-tab="analysis">分析</button>
-      </div>
-      <div class="detail-content">
-        <section class="tab-panel active" data-panel="details" id="event-details">
-          <div class="panel-empty"><strong>选择一个事件</strong><span>点击时间轴事件或搜索结果，查看时间、元数据与来源。</span></div>
-        </section>
-        <section class="tab-panel" data-panel="probe" id="probe-results">
-          <div class="panel-empty"><strong>此时发生什么</strong><span>点击时间轴空白或事件固定探针；Shift 点击可比较两个时点。</span></div>
-        </section>
-        <section class="tab-panel" data-panel="search" id="search-results">
-          <div class="panel-empty"><strong>搜索与过滤结果</strong><span>输入标题、人物、地点、标签或时间范围。</span></div>
-        </section>
-        <section class="tab-panel" data-panel="quality" id="quality-results">
-          <div class="panel-empty"><strong>导入质检</strong><span>每次导入后会列出坏行、歧义和修复建议。</span></div>
-        </section>
-        <section class="tab-panel" data-panel="analysis" id="analysis-results">
-          <div class="panel-empty"><strong>统计与版本差异</strong><span>从“分析”菜单开始。</span></div>
-        </section>
-      </div>
-    </aside>
   </div>
 
-  <dialog id="advanced-import-dialog">
-    <form method="dialog" id="advanced-import-form" class="dialog-form">
-      <header><div><span class="eyebrow">添加数据</span><h2>高级文本导入</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></header>
-      <div class="dialog-grid two">
-        <label class="field"><span>图层名称</span><input name="layerName" value="文本导入" required></label>
-        <label class="field"><span>图层角色</span><select name="role"><option value="primary">primary · 主线</option><option value="context">context · 研究背景</option><option value="anchor">anchor · 锚点</option><option value="background">background · 背景库</option></select></label>
-        <label class="field"><span>加入分组</span><select name="groupId" id="import-group-select"></select></label>
-      </div>
-      <label class="field"><span>CSV（严格两列 time,title）</span><textarea name="csv" rows="15" spellcheck="false">time,title
-960~1127,北宋
-1069~1085,王安石变法</textarea></label>
-      <p class="form-help">支持年、月、日、时、分、秒、BCE/公元前、负数年份、开区间和区间。坏行会进入质检报告，不会静默消失。</p>
-      <footer><button value="cancel">取消</button><button class="primary" value="default" data-submit="advanced-import">导入图层</button></footer>
-    </form>
-  </dialog>
+  <div id="testBadge" title="点击查看自测详情" style="display:none"></div>
+  <div id="testPanel">
+    <h4>自测结果</h4>
+    <pre id="testLog"></pre>
+  </div>
+  <div id="layerMenu">
+    <h5>图层操作</h5>
+    <button id="menuRename">重命名图层</button>
+    <button id="menuToggleHidden">隐藏该层</button>
+    <button id="menuColor">设置图层颜色</button>
+    <button id="menuDelete" class="danger">删除该层</button>
+    <button id="menuCancel">取消</button>
+  </div>
+  <div id="colorMenu">
+    <h5>图层颜色</h5>
+    <div id="colorSwatches" class="color-swatches"></div>
+    <button id="menuColorReset" class="secondary">恢复默认颜色</button>
+    <button id="menuColorCancel">取消</button>
+  </div>
+  <div id="eventTooltip" role="tooltip"></div>
+  <div id="toast"></div>
 
-  <dialog id="project-dialog">
-    <form method="dialog" id="project-form" class="dialog-form">
-      <header><div><span class="eyebrow">研究项目</span><h2 id="project-dialog-title">项目信息</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></header>
-      <label class="field"><span>项目名称</span><input name="name" required maxlength="100"></label>
-      <label class="field"><span>研究主题</span><input name="topic" maxlength="120" placeholder="例如：苏轼、北宋文学与政治"></label>
-      <label class="field"><span>项目说明</span><textarea name="description" rows="5" maxlength="1000"></textarea></label>
-      <footer><button value="cancel">取消</button><button class="primary" value="default" data-submit="project">保存</button></footer>
-    </form>
-  </dialog>
-
-  <dialog id="event-dialog">
-    <form method="dialog" id="event-form" class="dialog-form">
-      <header><div><span class="eyebrow">轻量修正</span><h2 id="event-dialog-title">编辑事件</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></header>
-      <input type="hidden" name="eventId"><input type="hidden" name="layerId">
-      <div class="dialog-grid two">
-        <label class="field"><span>时间</span><input name="rawTime" required></label>
-        <label class="field"><span>标题</span><input name="title" required></label>
-        <label class="field span-two"><span>说明</span><textarea name="description" rows="4"></textarea></label>
-        <label class="field"><span>地点</span><input name="location"></label>
-        <label class="field"><span>人物（逗号分隔）</span><input name="people"></label>
-        <label class="field"><span>标签（逗号分隔）</span><input name="tags"></label>
-        <label class="field"><span>日期可信度</span><select name="certainty"><option value="">未注明</option><option value="certain">确定</option><option value="approximate">约略</option><option value="disputed">有争议</option><option value="inferred">推定</option></select></label>
-        <label class="field span-two"><span>研究笔记</span><textarea name="notes" rows="3"></textarea></label>
-        <label class="field"><span>来源</span><input name="source"></label>
-        <label class="field"><span>页码</span><input name="page"></label>
-        <label class="field span-two"><span>来源 URL</span><input name="url" type="url"></label>
-        <label class="field span-two"><span>引文</span><textarea name="quotation" rows="2"></textarea></label>
-        <label class="field span-two"><span>其他外部链接（逗号分隔）</span><input name="externalLinks" placeholder="https://…"></label>
-      </div>
-      <footer><button type="button" class="danger" data-action="delete-event">删除事件</button><span class="spacer"></span><button value="cancel">取消</button><button class="primary" value="default" data-submit="event">保存修改</button></footer>
-    </form>
-  </dialog>
-
-  <dialog id="filter-dialog">
-    <form method="dialog" id="filter-form" class="dialog-form">
-      <header><div><span class="eyebrow">缩小研究范围</span><h2>过滤器</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></header>
-      <div class="dialog-grid two">
-        <fieldset><legend>图层角色</legend><label><input type="checkbox" name="roles" value="primary"> primary</label><label><input type="checkbox" name="roles" value="context"> context</label><label><input type="checkbox" name="roles" value="anchor"> anchor</label><label><input type="checkbox" name="roles" value="background"> background</label></fieldset>
-        <fieldset id="filter-groups"><legend>图层分组</legend></fieldset>
-        <label class="field"><span>标签（逗号分隔，全部匹配）</span><input name="tags"></label>
-        <label class="field"><span>地点</span><input name="locations"></label>
-        <label class="field"><span>人物</span><input name="people"></label>
-        <label class="inline-check align-end"><input name="viewportOnly" type="checkbox"> 只看当前视窗</label>
-        <label class="field"><span>起始年份</span><input name="timeStart" inputmode="numeric"></label>
-        <label class="field"><span>结束年份</span><input name="timeEnd" inputmode="numeric"></label>
-      </div>
-      <footer><button type="button" data-action="clear-filters">清空过滤</button><span class="spacer"></span><button value="cancel">取消</button><button class="primary" value="default" data-submit="filters">应用</button></footer>
-    </form>
-  </dialog>
-
-  <dialog id="help-dialog" class="help-dialog">
-    <form method="dialog" class="dialog-form">
-      <header><div><span class="eyebrow">ShowTime 使用帮助</span><h2>从专题走向背景比较</h2></div><button class="close-button" value="cancel" aria-label="关闭">×</button></header>
-      <div class="help-columns">
-        <section><h3>基本流程</h3><ol><li>打开项目包，或添加两列 CSV。</li><li>加载推荐背景并整理图层分组。</li><li>搜索、过滤并点击时间轴固定探针。</li><li>保存命名视图，导出项目包或当前视图。</li></ol></section>
-        <section><h3>画布操作</h3><ul><li>拖拽：平移时间范围</li><li>滚轮 / 双指：围绕指针缩放</li><li>点击：固定探针 A；Shift 点击：固定 B</li><li>点击事件：选择并查看详情</li><li>双击：重置视图</li></ul></section>
-        <section><h3>快捷键</h3><dl><dt>/</dt><dd>聚焦搜索</dd><dt>Esc</dt><dd>清除搜索 / 关闭面板</dd><dt>Ctrl/Cmd + Z</dt><dd>撤销编辑</dd><dt>Ctrl/Cmd + Shift + Z</dt><dd>重做</dd><dt>Delete</dt><dd>删除选中事件（会确认）</dd><dt>0</dt><dd>重置视图</dd></dl></section>
-        <section><h3>静态分享限制</h3><p>分享链接可以携带可公开访问项目的 URL 和视图状态。本地文件不会被偷偷上传；若数据只在本地，接收者仍需同一个 <code>.showtime.zip</code>。</p></section>
-      </div>
-      <footer><button class="primary" value="cancel">知道了</button></footer>
-    </form>
-  </dialog>
-
-  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
-  <script type="module" src="app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
