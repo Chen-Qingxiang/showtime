@@ -1,0 +1,76 @@
+.language-control {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.language-control .language-native-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.bar .language-switch {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  align-items: center;
+  width: 76px;
+  height: 32px;
+  padding: 3px;
+  border: 1px solid #263142;
+  border-radius: 9px;
+  background: #10141b;
+  color: #7f8da0;
+  cursor: pointer;
+  box-shadow: none;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: 0.035em;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.bar .language-switch:hover {
+  border-color: #34435a;
+  background: #121821;
+}
+
+.bar .language-switch:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(62, 166, 255, 0.18);
+}
+
+.language-option {
+  display: grid;
+  place-items: center;
+  height: 24px;
+  border-radius: 6px;
+  color: #748296;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.language-divider {
+  width: 1px;
+  height: 13px;
+  background: #283344;
+}
+
+.language-switch[data-language="en"] .language-en,
+.language-switch[data-language="zh"] .language-zh {
+  background: #1a2533;
+  color: #dce8f5;
+  box-shadow: inset 0 0 0 1px rgba(62, 166, 255, 0.2);
+}
+
+.language-switch[data-language="en"] .language-zh,
+.language-switch[data-language="zh"] .language-en {
+  color: #6f7d90;
+}
