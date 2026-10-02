@@ -15,8 +15,8 @@
 <button id="run" type="button">Run smoke tests</button>
 <pre id="results" aria-live="polite">Ready.</pre>
 <div class="frames">
-  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?v=halley-20261002-2"></iframe>
-  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?v=halley-20261002-2"></iframe>
+  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?v=showtime-20261002-3"></iframe>
+  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?v=showtime-20261002-3"></iframe>
 </div>
 <script>
 (() => {
@@ -30,20 +30,30 @@
     catch (error) { output.textContent += `\nFAIL ${name}: ${error.message}`; throw error; }
   }
   async function preferences(frame) {
-    const key = 'showtime:halley-scale';
     const reload = async () => {
       await new Promise(resolve => { frame.addEventListener('load', resolve, { once: true }); frame.contentWindow.location.reload(); });
       await pause();
     };
-    await check(`${frame.id}: fresh preference defaults on`, async () => {
-      localStorage.removeItem(key); await reload();
-      assert(frame.contentWindow.document.getElementById('halleyScale').checked, 'fresh default is off');
+    await check(`${frame.id}: fresh defaults are Chinese, dark, and Halley off`, async () => {
+      for (const key of ['showtime:halley-scale', 'showtime:language', 'showtime:theme']) localStorage.removeItem(key);
+      await reload();
+      const d = frame.contentWindow.document;
+      assert(!d.getElementById('halleyScale').checked, 'fresh Halley default is on');
+      assert(d.documentElement.lang.startsWith('zh'), 'fresh language is not Chinese');
+      assert(d.documentElement.dataset.theme === 'dark', 'fresh theme is not dark');
     });
-    await check(`${frame.id}: deliberate off/on choices survive reload`, async () => {
-      for (const value of [false, true]) {
-        const w = frame.contentWindow; const input = w.document.getElementById('halleyScale');
-        input.checked = value; input.dispatchEvent(new w.Event('change', { bubbles: true })); await reload();
-        assert(frame.contentWindow.document.getElementById('halleyScale').checked === value, 'manual preference lost');
+    await check(`${frame.id}: deliberate scale, language, and theme choices survive reload`, async () => {
+      for (const value of [{ halley: true, language: 'en', theme: 'light' }, { halley: false, language: 'zh', theme: 'dark' }]) {
+        const w = frame.contentWindow; const d = w.document; const input = d.getElementById('halleyScale');
+        input.checked = value.halley; input.dispatchEvent(new w.Event('change', { bubbles: true }));
+        const language = d.getElementById('languageSelect'); language.value = value.language;
+        language.dispatchEvent(new w.Event('change', { bubbles: true }));
+        if (d.documentElement.dataset.theme !== value.theme) d.getElementById('btn-theme').click();
+        await reload();
+        const restored = frame.contentWindow.document;
+        assert(restored.getElementById('halleyScale').checked === value.halley, 'manual scale preference lost');
+        assert(restored.getElementById('languageSelect').value === value.language, 'language preference lost');
+        assert(restored.documentElement.dataset.theme === value.theme, 'theme preference lost');
       }
     });
   }
@@ -83,6 +93,21 @@
       assert(d.getElementById('csvText').value === csv, 'CSV changed');
       toggle(true);
     });
+    await check(`${tag}: day/night changes page and canvas, preserving CSV and viewport`, async () => {
+      const csv = d.getElementById('csvText').value; const before = drawSignature();
+      const oldZoom = d.getElementById('zoomSlider').value;
+      d.getElementById('btn-theme').click(); await pause();
+      assert(d.documentElement.dataset.theme === 'light', 'light theme is not selected');
+      assert(w.getComputedStyle(d.documentElement).colorScheme === 'light', 'page theme did not change');
+      assert(before !== drawSignature(), 'canvas palette did not change');
+      assert(d.getElementById('btn-theme').textContent.includes('Dark mode'), 'English button label wrong');
+      language('zh'); await pause();
+      assert(d.getElementById('btn-theme').textContent.includes('夜间模式'), 'Chinese button label wrong');
+      assert(d.documentElement.scrollWidth <= w.innerWidth + 1, 'light theme overflows viewport');
+      assert(d.getElementById('csvText').value === csv && d.getElementById('zoomSlider').value === oldZoom, 'theme moved the view or changed CSV');
+      language('en'); d.getElementById('btn-theme').click(); await pause();
+      assert(d.documentElement.dataset.theme === 'dark' && drawSignature() === before, 'night palette did not restore');
+    });
     await check(`${tag}: H17 selection, sources, and close`, async () => {
       d.getElementById('btn-halley-info').click();
       assert(dialog.open, 'dialog did not open');
@@ -90,6 +115,34 @@
       assert(detail.textContent.includes('H17') && detail.textContent.includes('1066-03-26'), 'Gregorian anchor missing');
       assert(detail.textContent.includes('1066-03-20') && detail.querySelectorAll('a').length >= 2, 'source date/links missing');
       d.getElementById('halleyLocate').click(); assert(!dialog.open, 'dialog did not close');
+    });
+    await check(`${tag}: ancient returns are model years and locate on the extended scale`, async () => {
+      d.getElementById('btn-halley-info').click();
+      const select = d.getElementById('halleyReturnSelect'); select.value = '-53'; fire(select, 'change');
+      const detail = d.getElementById('halleyReturnDetail');
+      assert(select.options.length === 84, 'extended return inventory wrong');
+      assert(detail.textContent.includes('≈4085 BCE') && detail.textContent.includes('Model estimate'), 'model year or status missing');
+      assert(!/4085 BCE-\d\d-\d\d/.test(detail.textContent), 'model displayed as a precise ancient date');
+      assert(detail.querySelectorAll('a').length >= 4, 'model references missing');
+      d.getElementById('halleyLocate').click();
+      assert(d.getElementById('halleyScaleStatus').textContent.includes('H−53'), 'ancient anchor not rendered');
+      locate(17);
+    });
+    await check(`${tag}: interval and point tooltips have exactly two one-decimal Halley rows`, async () => {
+      const csv = d.getElementById('csvText').value;
+      d.getElementById('csvText').value = '266~316,西晋'; d.getElementById('btn-load').click(); locate(7);
+      const left = tag === 'mobile' ? 72 : 80; const right = tag === 'mobile' ? 12 : 20;
+      pointer('mousemove', left + (canvas.clientWidth - left - right) / 2, 100);
+      const block = d.querySelector('#eventTooltip .halley-event-meta');
+      assert(block && block.children.length === 2, 'interval has extra or missing Halley rows');
+      assert(block.textContent.includes('H6.6') && block.textContent.includes('0.6 H'), 'one-decimal display is wrong');
+      assert(!block.textContent.includes('Returns'), 'return count is still present');
+      const detached = d.createElement('div');
+      w.ShowtimeHalleyScale.appendEventInfo(detached, 1037, 1040);
+      assert(detached.firstChild.children.length === 2 && detached.textContent.includes('0.0 H'), 'no-return interval has different rows');
+      detached.replaceChildren(); w.ShowtimeHalleyScale.appendEventInfo(detached, 1066, 1066);
+      assert(detached.firstChild.children.length === 2 && detached.textContent.includes('0.0 H'), 'point has different rows');
+      d.getElementById('csvText').value = csv; d.getElementById('btn-load').click(); locate(17);
     });
     await check(`${tag}: CSV titles and source text survive both UI languages`, async () => {
       const area = d.getElementById('csvText');
@@ -149,7 +202,7 @@
     await check(`${tag}: Su Shi panel, return details, and observation links`, async () => {
       language('en'); d.getElementById('btn-halley-person').click();
       const person = d.getElementById('halleyPerson'); const result = d.getElementById('halleyPersonResult');
-      assert(person.open && result.textContent.includes('Su Shi') && result.textContent.includes('0.822 H'), 'example not shown');
+      assert(person.open && result.textContent.includes('Su Shi') && result.textContent.includes('0.8 H'), 'one-decimal example not shown');
       assert(result.querySelector('[data-return-h="17"]').textContent.includes('29'), 'Su Shi age missing');
       result.querySelector('[data-return-h="17"] button').click();
       assert(dialog.open && !person.open && d.getElementById('halleyReturnSelect').value === '17', 'return link failed');

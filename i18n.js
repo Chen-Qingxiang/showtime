@@ -2,7 +2,7 @@
   'use strict';
 
   const STORAGE_KEY = 'showtime:language';
-  const DEFAULT_LANGUAGE = 'en';
+  const DEFAULT_LANGUAGE = 'zh';
   const SUPPORTED_LANGUAGES = new Set(['en', 'zh']);
 
   const ZH_DEFAULT_SAMPLE = `# time,title（两列；layer 由文件名决定，左侧文本默认层名“文本”）

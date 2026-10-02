@@ -23,10 +23,10 @@
   width: 76px;
   height: 32px;
   padding: 3px;
-  border: 1px solid #263142;
+  border: 1px solid var(--language-border);
   border-radius: 9px;
-  background: #10141b;
-  color: #7f8da0;
+  background: var(--language-bg);
+  color: var(--language-text);
   cursor: pointer;
   box-shadow: none;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -38,8 +38,8 @@
 }
 
 .bar .language-switch:hover {
-  border-color: #34435a;
-  background: #121821;
+  border-color: var(--language-hover-border);
+  background: var(--language-hover);
 }
 
 .bar .language-switch:focus-visible {
@@ -53,24 +53,25 @@
   place-items: center;
   height: 24px;
   border-radius: 6px;
-  color: #748296;
+  color: var(--language-option);
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .language-divider {
   width: 1px;
   height: 13px;
-  background: #283344;
+  background: var(--language-divider);
 }
 
 .language-switch[data-language="en"] .language-en,
 .language-switch[data-language="zh"] .language-zh {
-  background: #1a2533;
-  color: #dce8f5;
+  background: var(--language-active-bg);
+  color: var(--language-active-text);
   box-shadow: inset 0 0 0 1px rgba(62, 166, 255, 0.2);
 }
 
 .language-switch[data-language="en"] .language-zh,
 .language-switch[data-language="zh"] .language-en {
-  color: #6f7d90;
+  color: var(--language-inactive);
 }
+

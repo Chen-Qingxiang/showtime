@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Showtime Timeline · Multiscale Timeline Explorer</title>
-  <link rel="stylesheet" href="styles.css?v=halley-20261002-2" />
-  <link rel="stylesheet" href="language-switch.css" />
+  <title>Showtime Timeline · 多尺度历史时间轴</title>
+  <link rel="stylesheet" href="styles.css?v=showtime-20261002-3" />
+  <link rel="stylesheet" href="language-switch.css?v=showtime-20261002-3" />
 </head>
 <body>
   <header>
@@ -54,7 +54,7 @@
               </select>
             </label>
             <label class="menu-check"><input id="hoverTooltip" type="checkbox" checked /> 事件悬浮气泡</label>
-            <label class="menu-check"><input id="halleyScale" type="checkbox" checked /> 哈雷纪年</label>
+            <label class="menu-check"><input id="halleyScale" type="checkbox" /> 哈雷纪年</label>
             <button id="btn-halley-info" type="button">哈雷纪年资料</button>
             <button id="btn-halley-person" type="button">人物与哈雷</button>
             <button id="btn-halley-history" type="button">哈雷观测史料</button>
@@ -72,6 +72,7 @@
         </details>
       </div>
       <div class="toolbar-spacer"></div>
+      <button id="btn-theme" type="button" aria-pressed="false" data-i18n-skip>☀ 日间模式</button>
       <label class="zoom-control">
         <span>缩放</span>
         <input id="zoomSlider" type="range" min="0" max="1000" step="1" value="650">
@@ -239,13 +240,14 @@
   </dialog>
   <div id="toast"></div>
 
-  <script src="i18n.js?v=halley-20261002-2"></script>
+  <script src="i18n.js?v=showtime-20261002-3"></script>
   <script src="language-switch.js"></script>
-  <script src="halley-data.js?v=halley-20261002-2"></script>
-  <script src="halley.js?v=halley-20261002-2"></script>
-  <script src="halley-history.js?v=halley-20261002-2"></script>
-  <script src="halley-scale.js?v=halley-20261002-2"></script>
-  <script src="halley-panels.js?v=halley-20261002-2"></script>
-  <script src="app.js?v=halley-20261002-2"></script>
+  <script src="halley-ancient-data.js?v=showtime-20261002-3"></script>
+  <script src="halley-data.js?v=showtime-20261002-3"></script>
+  <script src="halley.js?v=showtime-20261002-3"></script>
+  <script src="halley-history.js?v=showtime-20261002-3"></script>
+  <script src="halley-scale.js?v=showtime-20261002-3"></script>
+  <script src="halley-panels.js?v=showtime-20261002-3"></script>
+  <script src="app.js?v=showtime-20261002-3"></script>
 </body>
 </html>

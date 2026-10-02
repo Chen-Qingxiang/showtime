@@ -63,12 +63,12 @@ test('month-precision deaths include their month, not all later returns in the s
 const near = (actual, expected, tolerance = 1e-9) => assert.ok(Math.abs(actual - expected) < tolerance,
   `${actual} differs from ${expected}`);
 
-test('47 ordered, consecutive returns have the intended numbering and source provenance', () => {
-  assert.equal(H.returns.length, 47);
+test('84 ordered, consecutive returns have the intended numbering and source provenance', () => {
+  assert.equal(H.returns.length, 84);
   const years = [-240, 1066, 1835, 1910, 1986, 2061];
   [0, 17, 27, 28, 29, 30].forEach((h, i) => assert.equal(H.getReturn(h).historicalYear, years[i]));
   H.returns.forEach((entry, i) => {
-    assert.equal(entry.h, i - 16);
+    assert.equal(entry.h, i - 53);
     assert.ok(entry.sourceIds.every((id) => H.sources[id]?.url.startsWith('https://')));
     if (i) assert.ok(entry.julianDay > H.returns[i - 1].julianDay && entry.time > H.returns[i - 1].time);
   });
@@ -85,6 +85,33 @@ test('independent calendar transcriptions from Table 4 match Julian-day anchors'
     const entry = H.getReturn(h);
     near(H.calendarToJulianDay(year, month, day, entry.sourceCalendar), entry.julianDay, 1e-8);
   }
+});
+
+test('early model extends the table with calculated variable periods and explicit provenance', () => {
+  const calculated = require('../halley-ancient-data.js');
+  const archive = require('../data/halley-ancient.json');
+  assert.deepEqual(calculated, archive.returns);
+  assert.equal(calculated.length, 37);
+  assert.equal(H.getReturn(-53).historicalYear, -4085);
+  assert.equal(H.getReturn(-17).historicalYear, -1475);
+  assert.ok(H.returns.filter(r => r.h < -16).every(r => r.status === 'modelled'
+    && r.dateBasis === 'numerical-extension' && r.sourceIds.includes('ancientExtension')));
+  assert.equal(H.getReturn(-16).julianDay, 1208900.18109);
+  const periods = calculated.slice(1).map((r, i) => (r.julianDay - calculated[i].julianDay) / 365.25);
+  assert.ok(Math.min(...periods) > 60 && Math.max(...periods) < 90);
+  assert.ok(Math.max(...periods) - Math.min(...periods) > 5);
+  assert.ok(Math.abs(archive.control1334BC.differenceDays) < 0.2);
+  const validation = require('../data/halley-ancient-validation.json');
+  assert.ok(validation.allModelYearsAgree && validation.maxPerihelionDifferenceDays < 0.001);
+  assert.ok(H.lifetimeSummary(-3500, -3440).coverageComplete);
+});
+
+test('public coordinates use one decimal while internal interpolation retains precision', () => {
+  assert.equal(H.formatH(6.619), 'H6.6');
+  assert.equal(H.formatH(-17.429), 'H−17.4');
+  assert.equal(H.formatH(17), 'H17');
+  const time = H.fromHalley(17.423456);
+  near(H.toHalley(time), 17.423456);
 });
 
 test('historical numbering has no year zero and preserves a continuous BCE/CE coordinate', () => {
@@ -132,7 +159,7 @@ test('every exact perihelion maps to its integer H, including both endpoints', (
 });
 
 test('half, quarter, negative fractional H and arbitrary event times invert monotonically', () => {
-  for (let h = -16; h <= 30; h += 0.125) near(H.toHalley(H.fromHalley(h)), h);
+  for (let h = -53; h <= 30; h += 0.125) near(H.toHalley(H.fromHalley(h)), h);
   const a = H.getReturn(17); const b = H.getReturn(18);
   near(H.toHalley(a.time + (b.time - a.time) * 0.42), 17.42);
   near(H.fromHalley(-0.5), (H.getReturn(-1).time + H.getReturn(0).time) / 2);
@@ -147,7 +174,7 @@ test('periods are the published individual intervals rather than a fixed 75-year
 
 test('unsupported history, future extrapolation and invalid inputs do not fabricate returns', () => {
   for (const v of [-1e10, 5000, NaN, Infinity, -Infinity, null, '1066']) assert.equal(H.toHalley(v), null);
-  for (const h of [-17, 31, NaN, Infinity, null]) assert.equal(H.fromHalley(h), null);
+  for (const h of [-54, 31, NaN, Infinity, null]) assert.equal(H.fromHalley(h), null);
   assert.equal(H.getReturn(17.42), null);
   assert.equal(H.span(1000, 3000), null);
   assert.deepEqual(H.returnsBetween(1101, 1037), []);
@@ -182,7 +209,7 @@ test('year-only biography boundaries remain uncertain; coverage and precise ages
   assert.equal(precise.returns[0].approximateAge, false);
   const leapYearBirth = H.julianDayToTimeValue(H.calendarToJulianDay(1908, 4, 20));
   assert.equal(H.lifetimeSummary(leapYearBirth, 1911, { birthPrecision: 'date' }).returns[0].age, 2);
-  assert.equal(H.lifetimeSummary(-2000, 100).coverageComplete, false);
+  assert.equal(H.lifetimeSummary(-5000, 100).coverageComplete, false);
   assert.equal(H.lifetimeSummary(1101, 1037), null);
 });
 
@@ -214,7 +241,7 @@ test('renderer bounds work at both extreme zooms and outside the astronomical ta
   const fixture = rendererFixture();
   for (const [start, px] of [[-1e10, 1e-8], [H.getReturn(17).time, 2e9], [3000, 2], [-5000, 2]]) {
     const frame = fixture.render(start, px);
-    assert.ok(frame.markers.length <= 47 && frame.minorCount <= 138);
+    assert.ok(frame.markers.length <= H.returns.length && frame.minorCount <= 3 * (H.returns.length - 1));
     assert.ok(frame.markers.every((m) => m.x >= 80 && m.x <= 1260));
   }
 });

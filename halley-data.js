@@ -1,15 +1,31 @@
 /* Perihelion instants, not a fixed-period calendar. See docs/halley-scale.md. */
 (function (root, factory) {
-  const data = factory();
+  const ancient = typeof module === 'object' && module.exports
+    ? require('./halley-ancient-data.js') : root.ShowtimeHalleyAncientData;
+  const data = factory(ancient);
   if (typeof module === 'object' && module.exports) module.exports = data;
   else root.ShowtimeHalleyData = data;
-})(typeof globalThis === 'object' ? globalThis : this, function () {
+})(typeof globalThis === 'object' ? globalThis : this, function (ancient) {
   'use strict';
 
   const sources = Object.freeze({
+    ancientExtension: Object.freeze({
+      title: 'ShowTime: YK81/DE441 numerical extension, method and reproducible inputs',
+      url: 'https://github.com/Chen-Qingxiang/showtime/blob/main/docs/halley-scale.md',
+    }),
+    jplDE441: Object.freeze({
+      title: 'Park et al. (2021), The JPL Planetary and Lunar Ephemerides DE440 and DE441',
+      url: 'https://doi.org/10.3847/1538-3881/abd414',
+      doi: '10.3847/1538-3881/abd414',
+    }),
+    ias15: Object.freeze({
+      title: 'Rein & Spiegel (2015), IAS15: a fast, adaptive, high-order integrator for gravitational dynamics',
+      url: 'https://doi.org/10.1093/mnras/stu2164',
+      doi: '10.1093/mnras/stu2164',
+    }),
     yeomans1981: Object.freeze({
       title: 'Yeomans & Kiang (1981), The long-term motion of comet Halley, Table 4',
-      url: 'https://adsabs.harvard.edu/pdf/1981mnras.197..633y',
+      url: 'https://articles.adsabs.harvard.edu/pdf/1981MNRAS.197..633Y',
       doi: '10.1093/mnras/197.3.633',
     }),
     nasaHalley: Object.freeze({
@@ -47,7 +63,11 @@
     [1759, 2363592.56075], [1835, 2391598.93871], [1910, 2418781.67771],
   ];
 
-  const returns = historical.map(([historicalYear, julianDay], index) => {
+  const returns = ancient.map((entry) => Object.freeze({
+    ...entry, status: 'modelled', disputed: false, dateBasis: 'numerical-extension',
+    sourceCalendar: 'julian', timeScale: 'TDB', precision: 'model', noteKey: 'ancientModel',
+    sourceIds: Object.freeze(['ancientExtension', 'yeomans1981', 'jplDE441', 'ias15']),
+  })).concat(historical.map(([historicalYear, julianDay], index) => {
     const h = index - 16;
     const sourceIds = ['yeomans1981'];
     if (h === 0 || h === 17 || h === 27 || h === 28) sourceIds.push('nasaHistory');
@@ -70,7 +90,7 @@
       noteKey,
       sourceIds: Object.freeze(sourceIds),
     });
-  });
+  }));
   // NASA publishes these to the day; the numeric anchor is that day's start.
   // Do not infer a time of day or treat the 2061 prediction as an observation.
   returns.push(Object.freeze({

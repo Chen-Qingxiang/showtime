@@ -43,6 +43,15 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   const POINT_DISPLAY_STORAGE_KEY = 'showtime:point-display-mode';
   const HOVER_TOOLTIP_STORAGE_KEY = 'showtime:hover-tooltip';
   const HALLEY_SCALE_STORAGE_KEY = 'showtime:halley-scale';
+  const THEME_STORAGE_KEY = 'showtime:theme';
+  const CANVAS_THEMES = {
+    dark: { top: '#0a0d12', bottom: '#0a0c10', layer: '#0e131b', ghost: '#0b1523',
+      label: '#6c7f99', ghostLabel: '#84b6ff', hidden: '#4f627d',
+      text: '#ffffff', axisText: '#9fb1c9', tick: '#253045', axis: '#2b3546' },
+    light: { top: '#ffffff', bottom: '#f5f7fb', layer: '#edf2f7', ghost: '#e4efff',
+      label: '#465b73', ghostLabel: '#1e61a9', hidden: '#627187',
+      text: '#192d43', axisText: '#43576f', tick: '#bac7d7', axis: '#9daec2' },
+  };
   const DEFAULT_POINT_DISPLAY_MODE = 'year';
   const DEFAULT_HOVER_TOOLTIP_ENABLED = true;
   const POINT_DISPLAY_MODES = new Set(['point', 'year', 'month', 'date', 'time', 'all']);
@@ -908,7 +917,8 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     drag: { active: false, layer: null, grabDy: 0, mouseY: 0, overlayY: 0, targetIndex: 0 },
     pointDisplayMode: DEFAULT_POINT_DISPLAY_MODE,
     hoverTooltipEnabled: DEFAULT_HOVER_TOOLTIP_ENABLED,
-    halleyScaleEnabled: true,
+    halleyScaleEnabled: false,
+    theme: 'dark',
   };
 
   const pointer = { mode: null, startX: 0, startY: 0, lastX: 0, lastY: 0 };
@@ -940,6 +950,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     restorePointDisplayMode();
     restoreHoverTooltipState();
     restoreHalleyScaleState();
+    restoreThemeState();
     halleyInfo = window.ShowtimeHalleyScale.initInfo((entry) => {
       setHalleyScaleEnabled(true);
       setViewToSpan(230, entry.time);
@@ -983,6 +994,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       hideEventTooltip();
       halleyInfo.refresh();
       halleyPanels.refresh();
+      updateThemeButton();
       updateZoomReadout();
       draw();
     });
@@ -1010,6 +1022,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ui.hoverTooltip = document.getElementById('hoverTooltip');
     ui.eventTooltip = document.getElementById('eventTooltip');
     ui.halleyScale = document.getElementById('halleyScale');
+    ui.themeButton = document.getElementById('btn-theme');
     ui.halleyInfoButton = document.getElementById('btn-halley-info');
     ui.halleyTooltip = document.getElementById('halleyTooltip');
     ui.halleyStatus = document.getElementById('halleyScaleStatus');
@@ -1958,9 +1971,33 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function restoreHalleyScaleState() {
-    let enabled = true;
-    try { enabled = window.localStorage.getItem(HALLEY_SCALE_STORAGE_KEY) !== '0'; } catch {}
+    let enabled = false;
+    try { enabled = window.localStorage.getItem(HALLEY_SCALE_STORAGE_KEY) === '1'; } catch {}
     setHalleyScaleEnabled(enabled, { skipStorage: true, skipResize: true });
+  }
+
+  function updateThemeButton() {
+    const light = state.theme === 'light';
+    const zh = document.documentElement.lang.startsWith('zh');
+    ui.themeButton.textContent = light ? (zh ? '☾ 夜间模式' : '☾ Dark mode') : (zh ? '☀ 日间模式' : '☀ Light mode');
+    ui.themeButton.setAttribute('aria-pressed', String(light));
+    ui.themeButton.setAttribute('aria-label', ui.themeButton.textContent.slice(2));
+  }
+
+  function setTheme(theme, options = {}) {
+    state.theme = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = state.theme;
+    updateThemeButton();
+    if (!options.skipStorage) {
+      try { window.localStorage.setItem(THEME_STORAGE_KEY, state.theme); } catch {}
+    }
+    if (!options.skipDraw) draw();
+  }
+
+  function restoreThemeState() {
+    let theme = 'dark';
+    try { theme = window.localStorage.getItem(THEME_STORAGE_KEY); } catch {}
+    setTheme(theme, { skipStorage: true, skipDraw: true });
   }
 
   function xToYear(x) {
@@ -2198,7 +2235,18 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return hit;
   }
 
+  function readableBarText(color) {
+    const hex = normalizeColorForPicker(color).slice(1);
+    const values = [0, 2, 4].map(offset => {
+      const s = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    const luminance = 0.2126 * values[0] + 0.7152 * values[1] + 0.0722 * values[2];
+    return luminance > 0.179 ? '#101820' : '#ffffff';
+  }
+
   function drawSingleLayer(layer, layerTop, options = {}) {
+    const theme = CANVAS_THEMES[state.theme];
     const width = ui.canvas.clientWidth;
     const events = state.byLayer.get(layer) || [];
     const layerHeight = getLayerHeight(layer);
@@ -2210,11 +2258,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = ghost ? '#0b1523' : '#0e131b';
+    ctx.fillStyle = ghost ? theme.ghost : theme.layer;
     ctx.fillRect(state.leftPad, layerTop, width - state.leftPad - state.rightPad, layerHeight);
     window.ShowtimeHalleyScale.drawGuides(ctx, halleyFrame, layerTop, layerHeight);
 
-    ctx.fillStyle = ghost ? '#84b6ff' : '#6c7f99';
+    ctx.fillStyle = ghost ? theme.ghostLabel : theme.label;
     ctx.font = '13px system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
@@ -2223,7 +2271,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     }
 
     if (hidden) {
-      ctx.fillStyle = '#4f627d';
+      ctx.fillStyle = theme.hidden;
       ctx.font = '12px system-ui, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('右键图层名称可重新显示', state.leftPad + 12, layerTop + 6);
@@ -2262,7 +2310,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
         ctx.stroke();
 
-        ctx.fillStyle = 'white';
+        ctx.fillStyle = theme.text;
         ctx.font = '12px system-ui, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
@@ -2284,7 +2332,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         ctx.save();
         roundRect(ctx, rx, top, rw, state.laneHeight - 2, 6);
         ctx.clip();
-        ctx.fillStyle = 'white';
+        ctx.fillStyle = state.theme === 'light' ? readableBarText(color) : 'white';
         ctx.font = '12px system-ui, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
@@ -2442,7 +2490,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     const tick = chooseCalendarTick(state.pxPerYear);
     if (!tick) return false;
 
-    ctx.fillStyle = '#9fb1c9';
+    ctx.fillStyle = CANVAS_THEMES[state.theme].axisText;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
@@ -2453,7 +2501,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       const value = calendarTickValue(parts, tick);
       if (value > endValue + 1e-9) break;
       const x = yearToX(value);
-      ctx.strokeStyle = '#253045';
+      ctx.strokeStyle = CANVAS_THEMES[state.theme].tick;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x, y - 6);
@@ -2470,14 +2518,14 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     const startYear = Math.floor(xToYear(0) / step) * step;
     const endYear = Math.ceil(xToYear(width) / step) * step;
 
-    ctx.fillStyle = '#9fb1c9';
+    ctx.fillStyle = CANVAS_THEMES[state.theme].axisText;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.font = '12px system-ui, sans-serif';
 
     for (let value = startYear; value <= endYear; value += step) {
       const x = yearToX(value);
-      ctx.strokeStyle = '#253045';
+      ctx.strokeStyle = CANVAS_THEMES[state.theme].tick;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x, y - 6);
@@ -2488,7 +2536,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
   function drawAxis(width) {
     const y = 32;
-    ctx.strokeStyle = '#2b3546';
+    ctx.strokeStyle = CANVAS_THEMES[state.theme].axis;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -2505,14 +2553,14 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ctx.clearRect(0, 0, width, height);
 
     const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, '#0a0d12');
-    gradient.addColorStop(1, '#0a0c10');
+    gradient.addColorStop(0, CANVAS_THEMES[state.theme].top);
+    gradient.addColorStop(1, CANVAS_THEMES[state.theme].bottom);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
 
     halleyFrame = state.halleyScaleEnabled ? window.ShowtimeHalleyScale.draw(ctx, {
       width, height, leftPad: state.leftPad, rightPad: state.rightPad,
-      pxPerYear: state.pxPerYear, yearToX,
+      pxPerYear: state.pxPerYear, yearToX, theme: state.theme,
     }) : null;
     if (ui.halleyStatus) {
       const status = halleyFrame?.status || window.ShowtimeHalleyScale.t('off');
@@ -3075,6 +3123,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function bindUIActions() {
+    ui.themeButton.addEventListener('click', () => setTheme(state.theme === 'light' ? 'dark' : 'light'));
     ui.fileInput?.addEventListener('change', async (event) => {
       const result = await loadLocalCsvFiles(event.target.files);
       event.target.value = '';

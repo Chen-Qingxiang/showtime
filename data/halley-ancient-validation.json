@@ -1,0 +1,17 @@
+{
+  "model": "ShowTime YK81/DE441 extension v1",
+  "checked": "2026-10-02",
+  "reboundVersion": "5.2.1",
+  "baseEpsilon": 1e-11,
+  "checkEpsilon": 1e-13,
+  "count": 37,
+  "allModelYearsAgree": true,
+  "maxPerihelionDifferenceDays": 0.0005000000237487257,
+  "maxDifferenceH": -53,
+  "control1334BC": {
+    "publishedJd": 1234416.00585,
+    "computedJd": 1234416.148154742,
+    "differenceDays": 0.1423047420103103
+  },
+  "note": "Numerical convergence and one-orbit control only; not an uncertainty estimate for the ancient physical orbit."
+}

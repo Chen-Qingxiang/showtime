@@ -91,7 +91,7 @@
       });
       node(result, 'h3', current.title);
       node(result, 'p', current.rangeText);
-      node(result, 'p', `${t('span')}: ${summary.spanH === null ? '—' : `${Number(summary.spanH.toFixed(3))} H`}`);
+      node(result, 'p', `${t('span')}: ${summary.spanH === null ? '—' : `${summary.spanH.toFixed(1)} H`}`);
       if (summary.startH !== null && summary.endH !== null) node(result, 'p', `${model.formatH(summary.startH)} – ${model.formatH(summary.endH)}`, 'halley-note');
       if (!summary.coverageComplete) node(result, 'p', t('coverage'), 'halley-note');
       node(result, 'h3', t('returns'));

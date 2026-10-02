@@ -141,7 +141,7 @@
     };
   }
 
-  function formatH(h, digits = 2) {
+  function formatH(h, digits = 1) {
     if (!Number.isFinite(h)) return '';
     return `H${Number(h.toFixed(digits))}`.replace('-', '−');
   }

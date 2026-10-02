@@ -5,15 +5,16 @@
   const texts = {
     en: {
       title: 'Halley Scale', short: 'Halley', return: 'Halley return', observed: 'Historically observed',
-      reconstructed: 'Orbital reconstruction', disputed: 'Disputed identification', predicted: 'Predicted',
+      reconstructed: 'Orbital reconstruction', modelled: 'Model estimate', disputed: 'Disputed identification', predicted: 'Predicted',
       perihelion: 'Perihelion', gregorian: 'Gregorian', julian: 'Julian', original: 'Source date',
       since: 'years since', lifetime: '≈ one human lifetime', source: 'Sources', close: 'Close',
-      select: 'Select a return', locate: 'Locate on timeline', coverage: 'Data: 1404 BCE–2061 CE',
+      select: 'Select a return', locate: 'Locate on timeline', coverage: 'Data: ≈4085 BCE–2061 CE',
       outside: 'Outside the dated return table', compressed: 'Zoom in to separate the returns',
       intro: 'The same comet, returning across generations and civilisations. H0 is the 240 BCE return. Each interval has its own length; fractional H marks divide time, not the comet’s position in its orbit.',
       precision: 'Perihelion anchors the scale; a visible apparition lasts longer and depends on location. Ancient dates are model estimates, not exact observation dates. The 1986 and 2061 anchors are published to the day.',
       historical: 'Historical observations constrain this computed perihelion. “Observed” describes the apparition, not a directly measured perihelion instant.',
       reconstruction: 'Back-calculated orbit; no confirmed historical sighting is claimed here. Yeomans & Kiang estimated uncertainties up to about a month before the earliest records.',
+      ancientModel: 'Numerical extension from the 1404 BCE orbit of Yeomans & Kiang, with planetary initial states from JPL DE441. Approximate model year; no historical sighting or quantified accuracy is claimed. See the linked method and references.',
       firstRecord: 'The Shiji record is widely accepted as the earliest positive sighting. Yeomans & Kiang (1981) called the identification probable; NASA treats it as positive. The perihelion is computed.',
       babylon: 'Babylonian tablets studied by Stephenson, Yau & Hunger (1985) contain probable observations. The perihelion comes from the 1981 orbital solution.',
       bayeux: 'The 1066 apparition appears in the Bayeux Tapestry. The same return crossed skies in other societies; this date marks perihelion, not the tapestry’s depicted observation.',
@@ -21,21 +22,22 @@
       earlyCandidate: 'Possible Greek and Chinese records around 467 BCE have been suggested. Their identification is uncertain; the anchor remains the 466 BCE orbital reconstruction.',
       spacecraft: 'The 1986 apparition was studied by an international fleet of spacecraft. NASA gives perihelion as 9 February; no sub-day time is inferred.',
       prediction: 'NASA gives the next perihelion as 28 July 2061. It is a prediction, which may be revised, and is not a historical observation.',
-      coordinate: 'Halley coordinate', span: 'Span', during: 'Returns during this interval', years: 'years',
+      coordinate: 'Halley coordinate', span: 'Span', years: 'years',
       ephemeris: 'Ephemeris time', on: 'Halley Scale is on', off: 'Halley Scale is off',
       observations: 'See historical records',
     },
     zh: {
       title: '哈雷纪年', short: '哈雷', return: '哈雷回归', observed: '历史观测',
-      reconstructed: '轨道反算', disputed: '历史认定存疑', predicted: '未来预测',
+      reconstructed: '轨道反算', modelled: '模型推算', disputed: '历史认定存疑', predicted: '未来预测',
       perihelion: '近日点', gregorian: '公历', julian: '儒略历', original: '原表日期',
       since: '年，距上次', lifetime: '≈ 一代人生', source: '数据来源', close: '关闭',
-      select: '选择一次回归', locate: '在时间轴定位', coverage: '数据：前1404年—2061年',
+      select: '选择一次回归', locate: '在时间轴定位', coverage: '数据：约前4085年—2061年',
       outside: '当前视野超出回归日期表', compressed: '放大以分辨各次回归',
       intro: '同一颗彗星，跨过一代代人生与不同文明的天空。H0 为公元前240年回归。每一段间隔各有实际长度；小数 H 划分时间，不表示彗星在轨道上的位置。',
       precision: '用近日点作为时间锚点；肉眼可见的时段更长，也随地点而变。古代日期是轨道估算，不是精确的观测日。1986与2061年锚点采用来源公布的日期精度。',
       historical: '这次回归有历史观测，近日点由轨道计算得出。“历史观测”指回归曾被记录，不等于近日点时刻由古人直接测得。',
       reconstruction: '由轨道反算得出，此处不声称有确认的历史观测。Yeomans 与 Kiang 估计，早于最早记录的日期误差可能接近一个月。',
+      ancientModel: '由 Yeomans 与 Kiang 的前1404年轨道初值向前积分，行星初始状态取自 JPL DE441。年份为模型约数，不声称有历史观测或已量化的准确度。计算方法与参考资料见来源链接。',
       firstRecord: '《史记》这条记录通常被认作最早的可靠观测。1981年论文称其认定为“很可能”，NASA将其列为可靠观测；近日点日期仍由轨道计算。',
       babylon: 'Stephenson、Yau 与 Hunger（1985）研究的巴比伦泥板包含很可能对应此次回归的观测。近日点取自1981年的轨道解。',
       bayeux: '1066年的这次彗星出现在贝叶挂毯中。同一次回归也经过其他文明的天空；这里标的是近日点，不是挂毯描绘的观测时刻。',
@@ -43,7 +45,7 @@
       earlyCandidate: '前467年前后的希腊与中国记录曾被提出作为候选，认定仍有疑问。锚点保持为轨道反算的前466年回归。',
       spacecraft: '1986年回归曾由多国航天器共同探测。NASA公布近日点为2月9日；这里不推定具体时分。',
       prediction: 'NASA公布下一次近日点为2061年7月28日。这是可能更新的预测，不是已经发生的历史观测。',
-      coordinate: '哈雷坐标', span: '跨度', during: '期间回归', years: '年',
+      coordinate: '哈雷坐标', span: '跨度', years: '年',
       ephemeris: '历书时', on: '哈雷纪年已开启', off: '哈雷纪年已关闭',
       observations: '查看观测史料',
     },
@@ -60,32 +62,41 @@
     const year = model.astronomicalToHistoricalYear(p.year);
     return `${yearLabel(year)}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
   }
-  function returnLabel(entry) { return `${model.formatH(entry.h)} · ${yearLabel(entry.historicalYear)}`; }
+  function returnLabel(entry) { return `${model.formatH(entry.h)} · ${entry.status === 'modelled' ? '≈' : ''}${yearLabel(entry.historicalYear)}`; }
+
+  const palettes = {
+    dark: { bg: '#0e191e', title: '#8fbebb', axis: '#2b474c', tick: '#72aaa8', label: '#9ac7c4',
+      minorTick: '#39565a', minorText: '#5e8588', status: '#6e9396', guide: '143, 196, 193' },
+    light: { bg: '#edf6f5', title: '#245f5d', axis: '#b0cfcd', tick: '#387d79', label: '#245f5d',
+      minorTick: '#91b6b3', minorText: '#537b78', status: '#537b78', guide: '44, 111, 106' },
+  };
 
   function drawGuides(ctx, frame, top, height) {
     if (!frame || height <= 0) return;
     ctx.save();
     ctx.lineWidth = 1;
+    const guide = palettes[frame.theme || 'dark'].guide;
     for (const marker of frame.markers) {
-      ctx.strokeStyle = marker.entry.status === 'observed' ? 'rgba(143, 196, 193, 0.22)' : 'rgba(143, 196, 193, 0.14)';
+      ctx.strokeStyle = `rgba(${guide}, ${marker.entry.status === 'observed' ? 0.22 : 0.14})`;
       ctx.setLineDash(marker.entry.status === 'observed' ? [3, 6] : [1, 7]);
       ctx.beginPath(); ctx.moveTo(marker.x, top); ctx.lineTo(marker.x, top + height); ctx.stroke();
     }
     ctx.restore();
   }
 
-  function draw(ctx, { width, height, leftPad, rightPad, pxPerYear, yearToX }) {
+  function draw(ctx, { width, height, leftPad, rightPad, pxPerYear, yearToX, theme = 'dark' }) {
     const left = leftPad;
     const right = width - rightPad;
     const y = 72;
-    const frame = { markers: [], hitAreas: [], minorCount: 0, status: t('coverage') };
+    const palette = palettes[theme] || palettes.dark;
+    const frame = { markers: [], hitAreas: [], minorCount: 0, status: t('coverage'), theme: palettes[theme] ? theme : 'dark' };
     ctx.save();
-    ctx.fillStyle = '#0e191e'; ctx.fillRect(left, 40, Math.max(0, right - left), 40);
-    ctx.fillStyle = '#8fbebb'; ctx.font = '11px system-ui, sans-serif';
+    ctx.fillStyle = palette.bg; ctx.fillRect(left, 40, Math.max(0, right - left), 40);
+    ctx.fillStyle = palette.title; ctx.font = '11px system-ui, sans-serif';
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     ctx.fillText(t('short'), left - 10, 57);
     ctx.save(); ctx.beginPath(); ctx.rect(left, 40, Math.max(0, right - left), 40); ctx.clip();
-    ctx.strokeStyle = '#2b474c'; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+    ctx.strokeStyle = palette.axis; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
 
     const visible = model.returns.map((entry) => ({ entry, x: yearToX(entry.time) }))
       .filter(({ x }) => x >= left && x <= right);
@@ -96,7 +107,7 @@
       if (marker.x - lastMarkerX < 4) continue;
       lastMarkerX = marker.x;
       frame.markers.push(marker);
-      ctx.strokeStyle = '#72aaa8';
+      ctx.strokeStyle = palette.tick;
       ctx.beginPath(); ctx.moveTo(marker.x, y - 5); ctx.lineTo(marker.x, y + 3); ctx.stroke();
       const label = returnLabel(marker.entry);
       const labelWidth = ctx.measureText(label).width + 18;
@@ -105,9 +116,9 @@
       let x1 = Math.max(left, marker.x - 6);
       let x2 = Math.min(right, marker.x + 6);
       if (canLabel) {
-        ctx.fillStyle = '#9ac7c4'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = palette.label; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         // Small vector comet: stays legible and does not rely on emoji fonts.
-        ctx.strokeStyle = '#9ac7c4'; ctx.beginPath();
+        ctx.strokeStyle = palette.label; ctx.beginPath();
         ctx.moveTo(labelLeft, 55); ctx.lineTo(labelLeft + 8, 59);
         ctx.moveTo(labelLeft + 2, 53); ctx.lineTo(labelLeft + 8, 57); ctx.stroke();
         ctx.beginPath(); ctx.arc(labelLeft + 10, 59, 2, 0, Math.PI * 2); ctx.fill();
@@ -128,8 +139,8 @@
           const h = a.h + part / divisor;
           const x = yearToX(model.fromHalley(h));
           if (x < left + 24 || x > right - 24) continue;
-          ctx.strokeStyle = '#39565a'; ctx.beginPath(); ctx.moveTo(x, y - 3); ctx.lineTo(x, y); ctx.stroke();
-          ctx.fillStyle = '#5e8588'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.strokeStyle = palette.minorTick; ctx.beginPath(); ctx.moveTo(x, y - 3); ctx.lineTo(x, y); ctx.stroke();
+          ctx.fillStyle = palette.minorText; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
           ctx.fillText(model.formatH(h), x, 58); frame.minorCount += 1;
         }
       }
@@ -138,8 +149,8 @@
     if (!visible.length || tableWidth < 16) {
       frame.status = `${t('coverage')} · ${visible.length ? t('compressed') : t('outside')}`;
       // Clear compressed labels, but retain the exact anchors for later zooming.
-      ctx.fillStyle = '#0e191e'; ctx.fillRect(left, 40, Math.max(0, right - left), 29);
-      ctx.fillStyle = '#6e9396'; ctx.textAlign = 'left';
+      ctx.fillStyle = palette.bg; ctx.fillRect(left, 40, Math.max(0, right - left), 29);
+      ctx.fillStyle = palette.status; ctx.textAlign = 'left';
       ctx.fillText(frame.status, left + 10, 56);
       if (tableWidth < 16) frame.hitAreas = [];
     } else {
@@ -165,7 +176,9 @@
   function describeReturn(parent, entry, withSources = false) {
     parent.replaceChildren(); parent.dataset.i18nSkip = '';
     metaLine(parent, `${returnLabel(entry)} · 1P/Halley`, 'event-tooltip-title');
-    metaLine(parent, `${t('perihelion')}: ${dateLabel(entry.julianDay)} (${t('gregorian')})`);
+    metaLine(parent, entry.status === 'modelled'
+      ? `${t('perihelion')}: ≈${yearLabel(entry.historicalYear)}`
+      : `${t('perihelion')}: ${dateLabel(entry.julianDay)} (${t('gregorian')})`);
     metaLine(parent, `${t(entry.status)}${entry.disputed ? ` · ${t('disputed')}` : ''}`);
     const previous = model.getReturn(entry.h - 1);
     if (previous) {
@@ -174,7 +187,7 @@
         ? `距 ${model.formatH(previous.h)} ${gap} 年 · ${t('lifetime')}`
         : `${gap} ${t('since')} ${model.formatH(previous.h)} · ${t('lifetime')}`);
     }
-    if (entry.sourceCalendar === 'julian') {
+    if (entry.sourceCalendar === 'julian' && entry.status !== 'modelled') {
       metaLine(parent, `${t('original')}: ${dateLabel(entry.julianDay, 'julian')} (${t('julian')}, ${t('ephemeris')})`);
     }
     metaLine(parent, t(entry.noteKey), 'halley-note');
@@ -198,9 +211,7 @@
       : Math.abs(end - start) < 1e-12 ? model.formatH(a) : `${model.formatH(a)} – ${model.formatH(b)}`;
     metaLine(block, `${t('coordinate')}: ${coordinate}`);
     const delta = model.span(start, end);
-    if (delta !== null && end > start) metaLine(block, `${t('span')}: ${Number(delta.toFixed(2))} H`);
-    const entries = model.returnsBetween(start, end);
-    if (entries.length) metaLine(block, `${t('during')}: ${entries.slice(0, 4).map(returnLabel).join(' · ')}${entries.length > 4 ? ' …' : ''}`);
+    metaLine(block, `${t('span')}: ${delta === null ? '—' : `${delta.toFixed(1)} H`}`);
     parent.appendChild(block);
   }
 
