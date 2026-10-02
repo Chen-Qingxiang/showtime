@@ -42,6 +42,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   const SIDE_PANEL_STORAGE_KEY = 'showtime:side-collapsed';
   const POINT_DISPLAY_STORAGE_KEY = 'showtime:point-display-mode';
   const HOVER_TOOLTIP_STORAGE_KEY = 'showtime:hover-tooltip';
+  const HALLEY_SCALE_STORAGE_KEY = 'showtime:halley-scale';
   const DEFAULT_POINT_DISPLAY_MODE = 'year';
   const DEFAULT_HOVER_TOOLTIP_ENABLED = true;
   const POINT_DISPLAY_MODES = new Set(['point', 'year', 'month', 'date', 'time', 'all']);
@@ -883,6 +884,8 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   let DPR = window.devicePixelRatio || 1;
   let menuLayer = null;
   let colorMenuLayer = null;
+  let halleyFrame = null;
+  let halleyInfo = null;
 
   const state = {
     pxPerYear: 2,
@@ -904,6 +907,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     drag: { active: false, layer: null, grabDy: 0, mouseY: 0, overlayY: 0, targetIndex: 0 },
     pointDisplayMode: DEFAULT_POINT_DISPLAY_MODE,
     hoverTooltipEnabled: DEFAULT_HOVER_TOOLTIP_ENABLED,
+    halleyScaleEnabled: false,
   };
 
   const pointer = { mode: null, startX: 0, startY: 0, lastX: 0, lastY: 0 };
@@ -934,6 +938,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     restoreSidePanelState();
     restorePointDisplayMode();
     restoreHoverTooltipState();
+    restoreHalleyScaleState();
+    halleyInfo = window.ShowtimeHalleyScale.initInfo((entry) => {
+      setHalleyScaleEnabled(true);
+      setViewToSpan(230, entry.time);
+    });
     bindCanvasInteractions();
     bindUIActions();
     bindToolbarMenus();
@@ -942,6 +951,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     buildColorSwatches();
     window.addEventListener('resize', resizeCanvas);
     window.visualViewport?.addEventListener('resize', resizeCanvas);
+    window.addEventListener('showtime:languagechange', () => {
+      hideEventTooltip();
+      halleyInfo.refresh();
+      updateZoomReadout();
+      draw();
+    });
     resizeCanvas();
     loadCsvTextarea();
     runSelfTests();
@@ -965,6 +980,10 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ui.pointDisplayMode = document.getElementById('pointDisplayMode');
     ui.hoverTooltip = document.getElementById('hoverTooltip');
     ui.eventTooltip = document.getElementById('eventTooltip');
+    ui.halleyScale = document.getElementById('halleyScale');
+    ui.halleyInfoButton = document.getElementById('btn-halley-info');
+    ui.halleyTooltip = document.getElementById('halleyTooltip');
+    ui.halleyStatus = document.getElementById('halleyScaleStatus');
     ui.toast = document.getElementById('toast');
     ui.testBadge = document.getElementById('testBadge');
     ui.testPanel = document.getElementById('testPanel');
@@ -1611,10 +1630,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function fmtYear(year, options = {}) {
-    const abs = Math.abs(year);
+    // CSV coordinates stay unchanged; astronomical 0 is displayed as historical 1 BCE.
+    const historicalYear = year <= 0 ? year - 1 : year;
+    const abs = Math.abs(historicalYear);
     const compactThreshold = options.compactThreshold ?? 1e4;
     const body = abs >= compactThreshold ? formatLargeYearValue(abs) : String(Math.round(abs));
-    if (year < 0) return `${body} BC`;
+    if (historicalYear < 0) return `${body} BC`;
     if (options.withCE) return `${body} CE`;
     return body;
   }
@@ -1890,6 +1911,23 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return state.leftPad + (year - state.viewStart) * state.pxPerYear;
   }
 
+  function setHalleyScaleEnabled(enabled, options = {}) {
+    state.halleyScaleEnabled = !!enabled;
+    state.topPad = 40 + (state.halleyScaleEnabled ? window.ShowtimeHalleyScale.rowHeight : 0);
+    if (ui.halleyScale) ui.halleyScale.checked = state.halleyScaleEnabled;
+    hideEventTooltip();
+    if (!options.skipStorage) {
+      try { window.localStorage.setItem(HALLEY_SCALE_STORAGE_KEY, enabled ? '1' : '0'); } catch {}
+    }
+    if (!options.skipResize) resizeCanvas();
+  }
+
+  function restoreHalleyScaleState() {
+    let enabled = false;
+    try { enabled = window.localStorage.getItem(HALLEY_SCALE_STORAGE_KEY) === '1'; } catch {}
+    setHalleyScaleEnabled(enabled, { skipStorage: true, skipResize: true });
+  }
+
   function xToYear(x) {
     return state.viewStart + (x - state.leftPad) / state.pxPerYear;
   }
@@ -2049,6 +2087,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
     const title = document.createElement('div');
     title.className = 'event-tooltip-title';
+    title.dataset.i18nSkip = '';
     title.textContent = event.title || '(无标题)';
     ui.eventTooltip.appendChild(title);
 
@@ -2056,15 +2095,18 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     time.className = 'event-tooltip-meta';
     time.textContent = `时间：${displayEventRange(event)}`;
     ui.eventTooltip.appendChild(time);
+    if (state.halleyScaleEnabled) {
+      window.ShowtimeHalleyScale.appendEventInfo(ui.eventTooltip, event.start, event.end);
+    }
   }
 
-  function positionEventTooltip(clientX, clientY) {
-    if (!ui.eventTooltip) return;
+  function positionEventTooltip(clientX, clientY, tooltip = ui.eventTooltip) {
+    if (!tooltip) return;
     const pad = 8;
-    ui.eventTooltip.style.left = '0px';
-    ui.eventTooltip.style.top = '0px';
-    ui.eventTooltip.style.display = 'block';
-    const rect = ui.eventTooltip.getBoundingClientRect();
+    tooltip.style.left = '0px';
+    tooltip.style.top = '0px';
+    tooltip.style.display = 'block';
+    const rect = tooltip.getBoundingClientRect();
 
     let left = clientX + EVENT_TOOLTIP_OFFSET;
     if (left + rect.width + pad > window.innerWidth) {
@@ -2078,8 +2120,8 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     }
     top = clamp(top, pad, Math.max(pad, window.innerHeight - rect.height - pad));
 
-    ui.eventTooltip.style.left = `${left}px`;
-    ui.eventTooltip.style.top = `${top}px`;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
   }
 
   function showEventTooltip(event, clientX, clientY) {
@@ -2089,11 +2131,20 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function hideEventTooltip() {
+    if (ui.halleyTooltip) ui.halleyTooltip.style.display = 'none';
     if (!ui.eventTooltip) return;
     ui.eventTooltip.style.display = 'none';
   }
 
   function syncEventTooltipFromPointer(mouseEvent, x, y) {
+    const entry = window.ShowtimeHalleyScale.findReturn(halleyFrame, x, y);
+    if (entry && ui.halleyTooltip) {
+      ui.eventTooltip.style.display = 'none';
+      window.ShowtimeHalleyScale.describeReturn(ui.halleyTooltip, entry);
+      positionEventTooltip(mouseEvent.clientX, mouseEvent.clientY, ui.halleyTooltip);
+      return { halley: entry };
+    }
+    if (ui.halleyTooltip) ui.halleyTooltip.style.display = 'none';
     if (!state.hoverTooltipEnabled) {
       hideEventTooltip();
       return null;
@@ -2121,6 +2172,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ctx.globalAlpha = alpha;
     ctx.fillStyle = ghost ? '#0b1523' : '#0e131b';
     ctx.fillRect(state.leftPad, layerTop, width - state.leftPad - state.rightPad, layerHeight);
+    window.ShowtimeHalleyScale.drawGuides(ctx, halleyFrame, layerTop, layerHeight);
 
     ctx.fillStyle = ghost ? '#84b6ff' : '#6c7f99';
     ctx.font = '13px system-ui, sans-serif';
@@ -2395,7 +2447,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function drawAxis(width) {
-    const y = state.topPad - 8;
+    const y = 32;
     ctx.strokeStyle = '#2b3546';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -2417,6 +2469,15 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     gradient.addColorStop(1, '#0a0c10');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
+
+    halleyFrame = state.halleyScaleEnabled ? window.ShowtimeHalleyScale.draw(ctx, {
+      width, height, leftPad: state.leftPad, rightPad: state.rightPad,
+      pxPerYear: state.pxPerYear, yearToX,
+    }) : null;
+    if (ui.halleyStatus) {
+      const status = halleyFrame?.status || window.ShowtimeHalleyScale.t('off');
+      if (ui.halleyStatus.textContent !== status) ui.halleyStatus.textContent = status;
+    }
 
     drawAxis(width);
 
@@ -2994,6 +3055,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ui.hoverTooltip?.addEventListener('change', (event) => {
       setHoverTooltipEnabled(event.target.checked);
     });
+    ui.halleyScale?.addEventListener('change', (event) => setHalleyScaleEnabled(event.target.checked));
+    ui.halleyInfoButton?.addEventListener('click', () => {
+      hideEventTooltip();
+      closeToolbarMenus();
+      halleyInfo.open();
+    });
 
     ui.loadExampleButton?.addEventListener('click', async () => {
       const path = ui.exampleSelect?.value;
@@ -3168,13 +3235,19 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         }
       }
     }
-    syncEventTooltipFromPointer(event, x, y);
-    ui.canvas.style.cursor = 'default';
+    const hit = syncEventTooltipFromPointer(event, x, y);
+    ui.canvas.style.cursor = hit?.halley ? 'pointer' : 'default';
   }
 
-  function handleMouseUp() {
+  function handleMouseUp(event) {
+    const wasClick = pointer.mode === 'pending';
     ui.canvas.style.cursor = 'default';
     resetPointerPan();
+    if (wasClick && event) {
+      const rect = ui.canvas.getBoundingClientRect();
+      const entry = window.ShowtimeHalleyScale.findReturn(halleyFrame, event.clientX - rect.left, event.clientY - rect.top);
+      if (entry) halleyInfo.open(entry);
+    }
     if (!state.drag.active || !state.drag.layer) return;
 
     const layer = state.drag.layer;
@@ -3353,8 +3426,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     clearTouchLongPress();
     if (touchState.mode === 'pending' && !touchState.hasMoved && event.changedTouches.length) {
       const point = getTouchPoint(event.changedTouches[0]);
-      const hit = findEventAtCanvasPoint(point.x, point.y);
-      if (hit) {
+      const entry = window.ShowtimeHalleyScale.findReturn(halleyFrame, point.x, point.y);
+      const hit = entry ? null : findEventAtCanvasPoint(point.x, point.y);
+      if (entry) {
+        halleyInfo.open(entry);
+        event.preventDefault();
+      } else if (hit) {
         showEventTooltip(hit.event, point.clientX, point.clientY);
         event.preventDefault();
       }
@@ -3541,6 +3618,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       viewStart: state.viewStart,
       pointDisplayMode: state.pointDisplayMode,
       hoverTooltipEnabled: state.hoverTooltipEnabled,
+      halleyScaleEnabled: state.halleyScaleEnabled,
     };
   }
 
@@ -3556,6 +3634,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     state.viewStart = backup.viewStart;
     state.pointDisplayMode = backup.pointDisplayMode;
     state.hoverTooltipEnabled = backup.hoverTooltipEnabled;
+    setHalleyScaleEnabled(backup.halleyScaleEnabled, { skipStorage: true, skipResize: true });
     if (ui.pointDisplayMode) ui.pointDisplayMode.value = state.pointDisplayMode;
     if (ui.hoverTooltip) ui.hoverTooltip.checked = state.hoverTooltipEnabled;
     hideEventTooltip();
@@ -3695,6 +3774,18 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     add('parseYearToken: -221 → -221', () => parseYearToken(-221) === -221);
     add('parseYearToken: 221BC → -220', () => parseYearToken('221BC') === -220);
     add('parseYearToken: 公元前221 → -220', () => parseYearToken('公元前221') === -220);
+    add('BCE labels: astronomical 0 has no historical year zero', () => fmtYear(0) === '1 BC' && fmtYear(-239) === '240 BC');
+    add('Halley: explicit BCE input matches the original year coordinate', () => {
+      const start = parseTimeToken('240BC').value;
+      const entry = window.ShowtimeHalley.getReturn(0);
+      return start === -239 && entry.time >= start && entry.time < start + 1;
+    });
+    add('Halley: precise-date input matches a converted perihelion day', () => {
+      const entry = window.ShowtimeHalley.getReturn(17);
+      const start = parseTimeToken('1066-03-26').value;
+      const next = parseTimeToken('1066-03-27').value;
+      return entry.time >= start && entry.time < next;
+    });
     add('parseTimeField: -2070~-1600', () => {
       const range = parseTimeField('-2070~-1600');
       return range.start === -2070 && range.end === -1600;

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ShowTime browser smoke tests</title>
+<style>
+  body { margin: 20px; font: 14px system-ui; background: #10171e; color: #e6edf3; }
+  button { font: inherit; padding: 10px; cursor: pointer; }
+  iframe { display: block; height: 760px; border: 1px solid #52606f; background: #10171e; }
+  pre { white-space: pre-wrap; line-height: 1.5; }
+  .frames { overflow: auto; } .pass { color: #9ac7c4; } .fail { color: #ff7a79; }
+</style>
+<h1>ShowTime browser smoke tests</h1>
+<p>Tests the real app at desktop (1280 px) and mobile (390 px) widths. No extra dependencies.</p>
+<button id="run" type="button">Run smoke tests</button>
+<pre id="results" aria-live="polite">Ready.</pre>
+<div class="frames">
+  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html"></iframe>
+  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html"></iframe>
+</div>
+<script>
+(() => {
+  const output = document.getElementById('results');
+  const frames = ['desktop', 'mobile'].map(id => document.getElementById(id));
+  const pause = () => new Promise(resolve => setTimeout(resolve, 40));
+  const assert = (ok, message) => { if (!ok) throw new Error(message); };
+  let count = 0;
+  async function check(name, fn) {
+    try { await fn(); count++; output.textContent += `\nPASS ${name}`; }
+    catch (error) { output.textContent += `\nFAIL ${name}: ${error.message}`; throw error; }
+  }
+  async function suite(frame) {
+    const w = frame.contentWindow; const d = w.document;
+    const tag = frame.id;
+    const canvas = d.getElementById('c');
+    const input = d.getElementById('halleyScale');
+    const dialog = d.getElementById('halleyInfo');
+    const fire = (el, type) => el.dispatchEvent(new w.Event(type, { bubbles: true }));
+    const toggle = value => { input.checked = value; fire(input, 'change'); };
+    const language = value => { const select = d.getElementById('languageSelect'); select.value = value; fire(select, 'change'); };
+    const zoom = value => { const slider = d.getElementById('zoomSlider'); slider.value = String(value); fire(slider, 'input'); };
+    const pointer = (type, x, y) => {
+      const rect = canvas.getBoundingClientRect();
+      canvas.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: rect.left + x, clientY: rect.top + y, buttons: type === 'mousedown' ? 1 : 0 }));
+    };
+    const locate = h => {
+      if (!dialog.open) d.getElementById('btn-halley-info').click();
+      const select = d.getElementById('halleyReturnSelect'); select.value = String(h); fire(select, 'change');
+      d.getElementById('halleyLocate').click();
+    };
+    const drawSignature = () => canvas.toDataURL();
+    language('en'); toggle(false); await pause();
+
+    await check(`${tag}: original built-in self-tests`, async () => {
+      for (let i = 0; i < 100 && !d.getElementById('testLog').textContent; i++) await pause();
+      const log = d.getElementById('testLog').textContent;
+      assert(log.includes('✅') && !log.includes('❌'), log);
+    });
+    await check(`${tag}: enable/disable preserves the original canvas and CSV`, async () => {
+      const csv = d.getElementById('csvText').value; const before = drawSignature();
+      const originalHeight = canvas.height;
+      toggle(true); assert(d.getElementById('halleyScaleStatus').textContent.includes('Halley'), 'scale status missing');
+      assert(canvas.height >= originalHeight, 'lost layer height');
+      toggle(false); assert(drawSignature() === before, 'main timeline changed when disabled');
+      assert(d.getElementById('csvText').value === csv, 'CSV changed');
+      toggle(true);
+    });
+    await check(`${tag}: H17 selection, sources, and close`, async () => {
+      d.getElementById('btn-halley-info').click();
+      assert(dialog.open, 'dialog did not open');
+      const detail = d.getElementById('halleyReturnDetail');
+      assert(detail.textContent.includes('H17') && detail.textContent.includes('1066-03-26'), 'Gregorian anchor missing');
+      assert(detail.textContent.includes('1066-03-20') && detail.querySelectorAll('a').length >= 2, 'source date/links missing');
+      d.getElementById('halleyLocate').click(); assert(!dialog.open, 'dialog did not close');
+    });
+    await check(`${tag}: CSV titles and source text survive both UI languages`, async () => {
+      const area = d.getElementById('csvText');
+      const text = '1037~1101,苏轼\n240BC,原始标题\n1066,Halley Scale';
+      area.value = text; d.getElementById('btn-load').click();
+      language('zh'); await pause(); assert(area.value === text, 'Chinese switch changed user CSV');
+      language('en'); await pause(); assert(area.value === text, 'English switch changed user CSV');
+      locate(17);
+    });
+    await check(`${tag}: return hover and click work independently of event-tooltip toggle`, async () => {
+      const status = d.getElementById('halleyScaleStatus').textContent;
+      assert(status.includes('H17'), 'navigation missed H17');
+      const left = tag === 'mobile' ? 72 : 80; const right = tag === 'mobile' ? 12 : 20;
+      const x = left + (canvas.clientWidth - left - right) / 2;
+      const hover = d.getElementById('hoverTooltip'); hover.checked = false; fire(hover, 'change');
+      pointer('mousemove', x, 60);
+      assert(d.getElementById('halleyTooltip').style.display === 'block', 'return hover is hidden');
+      pointer('mousedown', x, 60); pointer('mouseup', x, 60);
+      assert(dialog.open && d.getElementById('halleyReturnSelect').value === '17', 'return click failed');
+      d.getElementById('halleyInfoClose').click(); hover.checked = true; fire(hover, 'change');
+    });
+    await check(`${tag}: drag pans, wheel zooms and layers remain usable`, async () => {
+      const before = drawSignature(); pointer('mousedown', 180, 210);
+      pointer('mousemove', 230, 210); pointer('mouseup', 230, 210);
+      assert(drawSignature() !== before, 'drag did not pan');
+      const slider = d.getElementById('zoomSlider'); const oldZoom = slider.value;
+      const rect = canvas.getBoundingClientRect();
+      canvas.dispatchEvent(new w.WheelEvent('wheel', { bubbles: true, cancelable: true,
+        clientX: rect.left + 200, clientY: rect.top + 210, deltaY: -100 }));
+      assert(slider.value !== oldZoom, 'wheel did not zoom');
+      d.getElementById('backgroundSelect').value = 'china-dynasties';
+      d.getElementById('btn-load-background').click(); await pause(); await pause();
+      assert(d.getElementById('testLog').textContent.includes('toggleLayerHidden'), 'layer regression checks absent');
+    });
+    await check(`${tag}: extreme zooms and unsupported range render without errors`, async () => {
+      zoom(0); assert(d.getElementById('halleyScaleStatus').textContent.length > 0, 'empty deep-time status');
+      zoom(1000); assert(canvas.width > 0 && canvas.height > 0, 'canvas lost dimensions');
+      zoom(400); locate(30); assert(d.getElementById('halleyScaleStatus').textContent.includes('H30'), 'future return missing');
+      locate(-5); d.getElementById('btn-halley-info').click();
+      const select = d.getElementById('halleyReturnSelect'); select.value = '-5'; fire(select, 'change');
+      const detail = d.getElementById('halleyReturnDetail').textContent;
+      assert(detail.includes('613 BCE') && detail.includes('616 BCE') && detail.includes('Disputed'), 'disputed record misclassified');
+      d.getElementById('halleyInfoClose').click();
+    });
+    await check(`${tag}: both languages fit the viewport and dialog`, async () => {
+      for (const value of ['zh', 'en']) {
+        language(value); await pause(); d.getElementById('btn-halley-info').click(); await pause();
+        const rect = dialog.getBoundingClientRect();
+        assert(rect.left >= 0 && rect.right <= w.innerWidth + 1, 'dialog overflows viewport');
+        assert(d.documentElement.scrollWidth <= w.innerWidth + 1, 'horizontal page overflow');
+        const detail = d.getElementById('halleyReturnDetail').textContent;
+        assert(detail.includes(value === 'zh' ? '近日点' : 'Perihelion'), 'detail language not refreshed');
+        d.getElementById('halleyInfoClose').click();
+      }
+    });
+    if (tag === 'mobile') await check('mobile: tap, pan, and pinch follow the existing touch handlers', async () => {
+      locate(17);
+      const rect = canvas.getBoundingClientRect();
+      const x = 72 + (canvas.clientWidth - 72 - 12) / 2;
+      const touch = (id, px, py) => new w.Touch({ identifier: id, target: canvas, clientX: rect.left + px, clientY: rect.top + py });
+      const send = (type, touches, changedTouches = touches) => canvas.dispatchEvent(new w.TouchEvent(type,
+        { bubbles: true, cancelable: true, touches, targetTouches: touches, changedTouches }));
+      const point = touch(1, x, 60); send('touchstart', [point]); send('touchend', [], [point]);
+      assert(dialog.open, 'tap did not inspect a return'); d.getElementById('halleyInfoClose').click();
+      const before = drawSignature(); send('touchstart', [touch(1, 150, 200)]);
+      send('touchmove', [touch(1, 190, 200)]); send('touchmove', [touch(1, 230, 200)]); send('touchend', [], [touch(1, 230, 200)]);
+      assert(drawSignature() !== before, 'touch pan did not redraw');
+      const oldZoom = d.getElementById('zoomSlider').value;
+      send('touchstart', [touch(1, 100, 200), touch(2, 200, 200)]);
+      send('touchmove', [touch(1, 90, 200), touch(2, 230, 200)]); send('touchend', [], []);
+      assert(d.getElementById('zoomSlider').value !== oldZoom, 'pinch did not zoom');
+    });
+    locate(17);
+  }
+  document.getElementById('run').addEventListener('click', async () => {
+    document.getElementById('run').disabled = true; count = 0; output.textContent = 'Running…';
+    try {
+      for (const frame of frames) await suite(frame);
+      output.textContent += `\n\n${count} checks passed. Both frames finish at H17.`;
+      output.className = 'pass'; output.dataset.result = 'passed';
+    } catch (error) { output.className = 'fail'; output.dataset.result = 'failed'; }
+    finally { document.getElementById('run').disabled = false; }
+  });
+})();
+</script>
+</html>

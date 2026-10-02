@@ -90,6 +90,8 @@
     ['年/月/日点显示为区间', 'Expand year/month/day points to ranges'],
     ['全部点显示为区间', 'Expand all points to ranges'],
     ['事件悬浮气泡', 'Event hover tooltip'],
+    ['哈雷纪年', 'Halley Scale'],
+    ['哈雷纪年资料', 'About the Halley Scale'],
     ['范围', 'Range'],
     ['贴合数据', 'Fit data'],
     ['人类史', 'Human history'],
@@ -418,7 +420,7 @@
 
   function shouldSkipTextNode(node) {
     const parent = node.parentElement;
-    return !parent || !!parent.closest('script, style, textarea, pre, code, canvas, .language-control');
+    return !parent || !!parent.closest('script, style, textarea, pre, code, canvas, .language-control, [data-i18n-skip]');
   }
 
   function localizeTextNode(node) {
@@ -620,6 +622,7 @@
     currentLanguage = SUPPORTED_LANGUAGES.has(language) ? language : DEFAULT_LANGUAGE;
     saveLanguage(currentLanguage);
     applyLanguage();
+    window.dispatchEvent(new Event('showtime:languagechange'));
   }
 
   function queueRefresh() {

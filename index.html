@@ -54,6 +54,8 @@
               </select>
             </label>
             <label class="menu-check"><input id="hoverTooltip" type="checkbox" checked /> 事件悬浮气泡</label>
+            <label class="menu-check"><input id="halleyScale" type="checkbox" /> 哈雷纪年</label>
+            <button id="btn-halley-info" type="button">哈雷纪年资料</button>
           </div>
         </details>
 
@@ -157,6 +159,7 @@
     <main>
       <button id="btn-side-drawer" class="side-drawer" type="button" aria-label="显示左栏" title="显示左栏"></button>
       <canvas id="c"></canvas>
+      <div id="halleyScaleStatus" class="sr-only" aria-live="polite" data-i18n-skip></div>
     </main>
   </div>
 
@@ -180,10 +183,29 @@
     <button id="menuColorCancel">取消</button>
   </div>
   <div id="eventTooltip" role="tooltip"></div>
+  <div id="halleyTooltip" role="tooltip" data-i18n-skip></div>
+  <dialog id="halleyInfo" aria-labelledby="halleyInfoTitle" data-i18n-skip>
+    <div class="halley-dialog-heading">
+      <h2 id="halleyInfoTitle" data-halley-text="title"></h2>
+      <button id="halleyInfoClose" type="button" data-halley-text="close"></button>
+    </div>
+    <p data-halley-text="intro"></p>
+    <p class="halley-note" data-halley-text="coverage"></p>
+    <label class="halley-return-picker">
+      <span data-halley-text="select"></span>
+      <select id="halleyReturnSelect"></select>
+    </label>
+    <div id="halleyReturnDetail"></div>
+    <button id="halleyLocate" type="button" data-halley-text="locate"></button>
+    <p class="halley-note" data-halley-text="precision"></p>
+  </dialog>
   <div id="toast"></div>
 
   <script src="i18n.js"></script>
   <script src="language-switch.js"></script>
+  <script src="halley-data.js"></script>
+  <script src="halley.js"></script>
+  <script src="halley-scale.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

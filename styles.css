@@ -494,7 +494,8 @@ body.side-collapsed .side-drawer::before {
   color: #ffb4c0;
 }
 
-#eventTooltip {
+#eventTooltip,
+#halleyTooltip {
   position: fixed;
   display: none;
   max-width: min(360px, calc(100vw - 24px));
@@ -519,6 +520,54 @@ body.side-collapsed .side-drawer::before {
 
 .event-tooltip-meta {
   color: #a9b8cf;
+}
+
+#halleyTooltip { border-color: #3b666b; }
+
+.halley-note { color: var(--muted); font-size: 12px; line-height: 1.55; margin-top: 8px; }
+.halley-event-meta { margin-top: 8px; padding-top: 6px; border-top: 1px solid #2b474c; }
+
+#halleyInfo {
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 20px;
+  overflow: auto;
+  color: var(--fg);
+  background: #10171e;
+  border: 1px solid #3b666b;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+#halleyInfo::backdrop { background: rgba(0, 0, 0, 0.6); }
+.halley-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.halley-dialog-heading h2 { margin: 0; font-size: 18px; }
+#halleyInfo button, #halleyReturnSelect {
+  font: inherit;
+  color: var(--fg);
+  background: #17262e;
+  border: 1px solid #3b666b;
+  border-radius: 7px;
+  padding: 8px 10px;
+  min-height: 40px;
+}
+#halleyInfo button { cursor: pointer; }
+.halley-return-picker { display: grid; gap: 6px; margin-block: 16px; }
+#halleyReturnSelect { width: 100%; min-width: 0; }
+.halley-sources { padding-left: 18px; font-size: 12px; }
+.halley-sources a { color: #9ac7c4; overflow-wrap: anywhere; }
+#halleyLocate { margin-top: 10px; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .color-swatches {
