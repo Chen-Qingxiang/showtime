@@ -4422,12 +4422,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       try {
         state.data = rowsToEvents(parseCSV('2000-01-01~2000-01-02,短事件', 'L1'));
         state.layerOrder = [];
-        state.viewStart = 1999;
-        state.pxPerYear = 10;
+        state.viewStart = 1999.99;
+        state.pxPerYear = 1000;
         rebuildFromState();
         draw();
         const layerBox = state.layerRects.get('L1');
-        const hit = layerBox && findEventAtCanvasPoint(yearToX(2000), layerBox.top + 10);
+        const hit = layerBox && findEventAtCanvasPoint(yearToX(2000) - 3, layerBox.top + 10);
         return hit?.event?.title === '短事件';
       } finally {
         restoreState(backup);
