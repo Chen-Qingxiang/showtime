@@ -221,6 +221,7 @@ header {
 .appearance-controls, .viewport-controls { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .appearance-controls { flex: 0 0 auto; }
 .viewport-controls { flex: 0 1 auto; }
+#btn-reset { flex: 0 0 auto; white-space: nowrap; }
 
 .layer-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .layer-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 6px; align-items: center; }

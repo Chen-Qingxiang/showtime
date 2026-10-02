@@ -15,8 +15,8 @@
 <button id="run" type="button">Run smoke tests</button>
 <pre id="results" aria-live="polite">Ready.</pre>
 <div class="frames">
-  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?selftest=1&v=showtime-review-20261002-2"></iframe>
-  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?selftest=1&v=showtime-review-20261002-2"></iframe>
+  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?selftest=1&v=showtime-review-20261002-3"></iframe>
+  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?selftest=1&v=showtime-review-20261002-3"></iframe>
 </div>
 <script>
 (() => {
@@ -191,6 +191,9 @@
       assert(block && block.children.length === 2, 'interval has extra or missing Halley rows');
       assert(block.textContent.includes('H6.6') && block.textContent.includes('0.6 H'), 'one-decimal display is wrong');
       assert(!block.textContent.includes('Returns'), 'return count is still present');
+      const eventX = left + (canvas.clientWidth - left - right) / 2;
+      pointer('mousedown', eventX, 100); pointer('mouseup', eventX, 100);
+      assert(!d.getElementById('halleyPerson').open && d.getElementById('eventTooltip').style.display === 'block', 'ordinary interval click opened a biography panel');
       const detached = d.createElement('div');
       w.ShowtimeHalleyScale.appendEventInfo(detached, 1037, 1040);
       assert(detached.firstChild.children.length === 2 && detached.textContent.includes('0.0 H'), 'no-return interval has different rows');
