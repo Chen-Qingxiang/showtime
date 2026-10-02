@@ -94,6 +94,8 @@
       toggle(true);
     });
     await check(`${tag}: day/night changes page and canvas, preserving CSV and viewport`, async () => {
+      d.getElementById('csvText').value = '1037~1101,Original research title\n266~316,西晋';
+      d.getElementById('btn-load').click(); await pause();
       const csv = d.getElementById('csvText').value; const before = drawSignature();
       const oldZoom = d.getElementById('zoomSlider').value;
       d.getElementById('btn-theme').click(); await pause();
