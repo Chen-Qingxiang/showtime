@@ -83,12 +83,13 @@
     });
     await check(`${tag}: return hover and click work independently of event-tooltip toggle`, async () => {
       const status = d.getElementById('halleyScaleStatus').textContent;
-      assert(status.includes('H17'), 'navigation missed H17');
+      assert(status.includes('Halley Scale is on'), 'scale is disabled after navigation');
       const left = tag === 'mobile' ? 72 : 80; const right = tag === 'mobile' ? 12 : 20;
       const x = left + (canvas.clientWidth - left - right) / 2;
       const hover = d.getElementById('hoverTooltip'); hover.checked = false; fire(hover, 'change');
       pointer('mousemove', x, 60);
       assert(d.getElementById('halleyTooltip').style.display === 'block', 'return hover is hidden');
+      assert(d.getElementById('halleyTooltip').textContent.includes('H17'), 'navigation missed H17');
       pointer('mousedown', x, 60); pointer('mouseup', x, 60);
       assert(dialog.open && d.getElementById('halleyReturnSelect').value === '17', 'return click failed');
       d.getElementById('halleyInfoClose').click(); hover.checked = true; fire(hover, 'change');
