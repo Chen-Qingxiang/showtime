@@ -920,7 +920,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     drag: { active: false, layer: null, grabDy: 0, mouseY: 0, overlayY: 0, targetIndex: 0 },
     pointDisplayMode: DEFAULT_POINT_DISPLAY_MODE,
     hoverTooltipEnabled: DEFAULT_HOVER_TOOLTIP_ENABLED,
-    halleyScaleEnabled: false,
+    halleyScaleEnabled: true,
     theme: 'dark',
   };
 
@@ -1965,8 +1965,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function restoreHalleyScaleState() {
-    let enabled = false;
-    try { enabled = window.localStorage.getItem(HALLEY_SCALE_STORAGE_KEY) === '1'; } catch {}
+    let enabled = true;
+    try {
+      const saved = window.localStorage.getItem(HALLEY_SCALE_STORAGE_KEY);
+      if (saved === '0' || saved === '1') enabled = saved === '1';
+    } catch {}
     setHalleyScaleEnabled(enabled, { skipStorage: true, skipResize: true });
   }
 

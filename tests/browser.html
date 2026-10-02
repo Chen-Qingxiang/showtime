@@ -15,8 +15,8 @@
 <button id="run" type="button">Run smoke tests</button>
 <pre id="results" aria-live="polite">Ready.</pre>
 <div class="frames">
-  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?selftest=1&v=showtime-review-20261002-3"></iframe>
-  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?selftest=1&v=showtime-review-20261002-3"></iframe>
+  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?selftest=1&v=showtime-halley-default-on-20261002"></iframe>
+  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?selftest=1&v=showtime-halley-default-on-20261002"></iframe>
 </div>
 <script>
 (() => {
@@ -38,11 +38,11 @@
       await new Promise(resolve => { frame.addEventListener('load', resolve, { once: true }); frame.contentWindow.location.reload(); });
       await pause();
     };
-    await check(`${frame.id}: fresh defaults are Chinese, dark, and Halley off`, async () => {
+    await check(`${frame.id}: fresh defaults are Chinese, dark, and Halley on`, async () => {
       for (const key of ['showtime:halley-scale', 'showtime:language', 'showtime:theme', 'showtime:side-collapsed']) localStorage.removeItem(key);
       await reload();
       const d = frame.contentWindow.document;
-      assert(!d.getElementById('halleyScale').checked, 'fresh Halley default is on');
+      assert(d.getElementById('halleyScale').checked, 'fresh Halley default is off');
       assert(d.documentElement.lang.startsWith('zh'), 'fresh language is not Chinese');
       assert(d.documentElement.dataset.theme === 'dark', 'fresh theme is not dark');
     });
