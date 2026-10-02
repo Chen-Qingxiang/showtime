@@ -6,7 +6,9 @@
 
 ## 使用
 
-打开后可直接查看默认朝代表，上传 CSV / ZIP、选择内置示例，或从背景库叠加参照图层。拖拽平移，滚轮或顶部滑块缩放；图层名称处可重排，右键可隐藏、改色、重命名或删除。
+打开后可直接查看默认朝代表。在“添加图层”上传 CSV / ZIP、打开文本编辑器、选择示例，或添加背景参照。默认新建独立图层；需要合并时勾选“追加到同名图层”，原有事件会保留。文本编辑器可选填图层名称，按钮旁会预告导入结果。
+
+拖拽平移，滚轮或顶部滑块缩放。“图层”菜单可定位、隐藏、重排、改色、重命名或删除；画布图层名称处的拖动和右键仍可用。添加背景保留当前时间视图，“范围 → 贴合可见图层”重新查看全部可见数据。
 
 界面默认**中文、夜间模式**。顶部按钮切换日间 / 夜间，语言和手动选择会被记住；切换不会改写用户 CSV。
 
@@ -48,7 +50,9 @@ time,title
 
 纯 HTML / CSS / JavaScript 与 Canvas，静态 GitHub Pages；没有框架或新增浏览器运行依赖。
 
-`npm install` 后执行 `npm run dev`。`npm test` 检查坐标、日期与渲染边界；通过 HTTP 打开 [tests/browser.html](tests/browser.html) 检查桌面 / 手机尺寸的真实页面。早期轨道生成只用于离线维护，命令和依赖见上面的模型文档。
+`npm install` 后执行 `npm run dev`。`npm test` 检查 CSV、哈雷坐标、日期与渲染边界；通过 HTTP 打开 [tests/browser.html](tests/browser.html) 检查桌面 / 手机尺寸的真实页面。`?selftest=1` 启用应用内部自测，普通页面不运行。早期轨道生成只用于离线维护，命令和依赖见上面的模型文档。
+
+[系统 review：已修正的问题与下一步](docs/review-20261002.md)。目前只保存界面偏好；刷新会丢失已导入图层，请保留原始 CSV。
 
 [yk]: https://articles.adsabs.harvard.edu/pdf/1981MNRAS.197..633Y
 [babylon]: https://www.nature.com/articles/314587a0

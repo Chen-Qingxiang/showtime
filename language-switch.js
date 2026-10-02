@@ -10,6 +10,8 @@
     if (wrapper.querySelector('.language-switch')) return true;
 
     select.classList.add('language-native-select');
+    select.tabIndex = -1;
+    select.setAttribute('aria-hidden', 'true');
 
     const button = document.createElement('button');
     button.id = 'languageSwitch';

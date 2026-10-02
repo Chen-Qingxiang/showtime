@@ -4,39 +4,49 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Showtime Timeline · 多尺度历史时间轴</title>
-  <link rel="stylesheet" href="styles.css?v=showtime-20261002-4" />
-  <link rel="stylesheet" href="language-switch.css?v=showtime-20261002-4" />
+  <link rel="stylesheet" href="styles.css?v=showtime-review-20261002-1" />
+  <link rel="stylesheet" href="language-switch.css?v=showtime-review-20261002-1" />
 </head>
 <body>
   <header>
     <div class="bar">
       <div class="toolbar-menus">
-        <details class="toolbar-menu">
+        <details id="addLayerMenu" class="toolbar-menu toolbar-menu-wide">
           <summary>添加图层</summary>
           <div class="menu-panel">
+            <section class="menu-section">
+            <h4>CSV / 示例导入方式</h4>
+            <label class="menu-check"><input id="mergeSameSource" type="checkbox" /> 追加到同名图层</label>
+            <p class="menu-note">默认新建独立图层；追加会保留原有事件。</p>
             <label class="menu-file-picker">
-              <input id="file" type="file" accept=".csv,text/csv,.zip,application/zip,application/x-zip-compressed" multiple />
+              <input id="file" type="file" aria-label="上传 CSV / ZIP" accept=".csv,text/csv,.zip,application/zip,application/x-zip-compressed" multiple />
               <span>上传 CSV / ZIP</span>
             </label>
-            <button id="btn-load" type="button">加载左侧文本</button>
-            <label class="menu-check"><input id="mergeSameSource" type="checkbox" checked /> 同源追加到同一图层</label>
-          </div>
-        </details>
-
-        <details class="toolbar-menu toolbar-menu-wide">
-          <summary>背景</summary>
-          <div class="menu-panel">
+            <button id="btn-open-text" type="button">粘贴 / 编辑 CSV…</button>
             <label class="menu-field">
               <span>内置示例</span>
               <select id="exampleSelect"></select>
             </label>
-            <button id="btn-load-example" type="button">加载示例</button>
+            <button id="btn-load-example" type="button">添加示例图层</button>
+            </section>
+            <section class="menu-section">
+            <h4>背景参照</h4>
             <label class="menu-field">
               <span>背景库</span>
               <select id="backgroundSelect"></select>
             </label>
-            <button id="btn-load-background" type="button">加载背景</button>
-            <button id="btn-load-recommended-background" type="button">加载推荐背景</button>
+            <button id="btn-load-background" type="button">添加背景图层</button>
+            <button id="btn-load-recommended-background" type="button">添加推荐背景</button>
+            <p class="menu-note">背景添加在下方，保持当前时间视图。</p>
+            </section>
+          </div>
+        </details>
+
+        <details id="layersMenu" class="toolbar-menu toolbar-menu-wide">
+          <summary>图层</summary>
+          <div class="menu-panel">
+            <p class="menu-note">点击名称定位；更多操作可重排、改色或删除。</p>
+            <ol id="layerList" class="layer-list" aria-label="已加载图层" data-i18n-skip></ol>
           </div>
         </details>
 
@@ -54,17 +64,20 @@
               </select>
             </label>
             <label class="menu-check"><input id="hoverTooltip" type="checkbox" checked /> 事件悬浮气泡</label>
+            <section class="menu-section">
+            <h4>哈雷工具</h4>
             <label class="menu-check"><input id="halleyScale" type="checkbox" /> 哈雷纪年</label>
             <button id="btn-halley-info" type="button">哈雷纪年资料</button>
             <button id="btn-halley-person" type="button">人物与哈雷</button>
             <button id="btn-halley-history" type="button">哈雷观测史料</button>
+            </section>
           </div>
         </details>
 
         <details class="toolbar-menu">
           <summary>范围</summary>
           <div class="menu-panel range-presets">
-            <button type="button" data-range-years="auto">贴合数据</button>
+            <button type="button" data-range-years="auto">贴合可见图层</button>
             <button type="button" data-range-years="300000">人类史</button>
             <button type="button" data-range-years="4600000000">地质史</button>
             <button type="button" data-range-years="13800000000">宇宙史</button>
@@ -72,22 +85,26 @@
         </details>
       </div>
       <div class="toolbar-spacer"></div>
-      <button id="btn-theme" type="button" aria-pressed="false" data-i18n-skip>☀ 日间模式</button>
+      <div class="appearance-controls">
+        <button id="btn-theme" type="button" aria-pressed="false" data-i18n-skip>☀ 日间模式</button>
+      </div>
+      <div class="viewport-controls">
       <label class="zoom-control">
         <span>缩放</span>
         <input id="zoomSlider" type="range" min="0" max="1000" step="1" value="650">
       </label>
       <span id="zoomReadout" class="zoom-readout">1 px / 年</span>
       <button id="btn-reset" type="button">重置视图</button>
+      </div>
     </div>
   </header>
 
   <div class="wrap">
-    <aside class="side">
-      <h3>CSV 文本（示例）</h3>
+    <aside id="csvPanel" class="side" aria-label="CSV 编辑器">
+      <h3><label for="csvText">CSV 编辑器</label></h3>
       <textarea id="csvText" spellcheck="false"># time,title（两列；layer 由文件名决定，左侧文本默认层名“文本”）
 # 约定：范围用 ~ 分隔；支持年份、年月、日期或日内时间（例 1949-10-01 12:30:00）
-# 可用负数表示 BCE（例 -2070~-1600）
+# BCE 推荐写 221BC；裸负数保留旧内部坐标
 # 若无结束（例如 1949~ 或 1949-10-01~），将自动补到当前年/日期
 -2070~-1600,夏
 -1600~-1046,商
@@ -117,7 +134,13 @@
 1636~1912,清
 1912~1949,中华民国（大陆时期）
 1949~,中华人民共和国</textarea>
-      <div class="hint small">
+      <label class="editor-field"><span>图层名称（可选）</span><input id="textLayerName" type="text" maxlength="200" placeholder="默认：文本" /></label>
+      <label class="menu-check editor-mode"><input id="mergeTextSource" type="checkbox" /> 追加到同名图层</label>
+      <p id="textImportPreview" class="small" data-i18n-skip></p>
+      <button id="btn-load" class="editor-submit" type="button" data-i18n-skip>添加为新图层</button>
+      <p id="textImportStatus" class="small" role="status" data-i18n-skip></p>
+      <details class="hint small">
+        <summary>格式与操作说明</summary>
         <div class="hint-block">
           <div class="hint-title">数据格式</div>
           <ul>
@@ -134,10 +157,10 @@
           <div class="hint-title">导入方式</div>
           <ul>
             <li>上传本地 CSV / ZIP：CSV 可多选；ZIP 内前 100 个 CSV 会按文件名排序后作为独立图层导入</li>
-            <li>点击“加载左侧文本”：内容会进入 <code>文本</code> 图层</li>
-            <li>顶部“背景”菜单可加载内置示例和背景库</li>
+            <li>在 CSV 编辑器中粘贴文本，可选填图层名，再点击添加按钮</li>
+            <li>顶部“添加图层”统一提供 CSV、内置示例和背景参照</li>
             <li>“加载推荐背景”会按当前主题和时间范围自动选几层</li>
-            <li>勾选“同源追加到同一图层”时，重复导入会叠加到原图层</li>
+            <li>默认新建独立图层；勾选“追加到同名图层”后会保留原有事件并追加</li>
             <li>“显示”菜单里的点事件选项可把 <code>1647~1647</code> 这类单年点显示为全年条，减少长标题挤在圆点后的重叠</li>
           </ul>
         </div>
@@ -152,16 +175,16 @@
             <li><span class="kbd">滚轮</span>（左侧图层名区域）：页面上下滚动</li>
             <li>顶部“范围”菜单：快速切到人类史 / 地质史 / 宇宙史</li>
             <li>在左侧图层名区域按住拖动：调整图层顺序</li>
-            <li><span class="kbd">右键</span> 图层名：重命名、隐藏、改颜色、删除</li>
+            <li>顶部“图层”菜单可定位、隐藏和管理各层；也可<span class="kbd">右键</span>图层名</li>
             <li>开启“显示”菜单里的事件悬浮气泡后，鼠标悬浮事件块可查看完整标题和时间</li>
             <li>双击画布或点“重置视图”：恢复视图</li>
           </ul>
         </div>
-      </div>
+      </details>
     </aside>
     <main>
       <button id="btn-side-drawer" class="side-drawer" type="button" aria-label="显示左栏" title="显示左栏"></button>
-      <canvas id="c"></canvas>
+      <canvas id="c" aria-label="历史时间轴；通过图层菜单管理图层"></canvas>
       <div id="halleyScaleStatus" class="sr-only" aria-live="polite" data-i18n-skip></div>
     </main>
   </div>
@@ -173,6 +196,10 @@
   </div>
   <div id="layerMenu">
     <h5>图层操作</h5>
+    <p id="layerMenuName" class="menu-note" data-i18n-skip></p>
+    <button id="menuFit">定位该层</button>
+    <button id="menuMoveUp">上移一层</button>
+    <button id="menuMoveDown">下移一层</button>
     <button id="menuRename">重命名图层</button>
     <button id="menuToggleHidden">隐藏该层</button>
     <button id="menuColor">设置图层颜色</button>
@@ -238,16 +265,18 @@
     <p id="halleyHistoryStatus" role="status"></p>
     <div id="halleyHistoryRecords"></div>
   </dialog>
-  <div id="toast"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
 
-  <script src="i18n.js?v=showtime-20261002-4"></script>
-  <script src="language-switch.js"></script>
-  <script src="halley-ancient-data.js?v=showtime-20261002-4"></script>
-  <script src="halley-data.js?v=showtime-20261002-4"></script>
-  <script src="halley.js?v=showtime-20261002-4"></script>
-  <script src="halley-history.js?v=showtime-20261002-4"></script>
-  <script src="halley-scale.js?v=showtime-20261002-4"></script>
-  <script src="halley-panels.js?v=showtime-20261002-4"></script>
-  <script src="app.js?v=showtime-20261002-4"></script>
+  <script src="i18n.js?v=showtime-review-20261002-1"></script>
+  <script src="language-switch.js?v=showtime-review-20261002-1"></script>
+  <script src="csv.js?v=showtime-review-20261002-1"></script>
+  <script src="layer-controls.js?v=showtime-review-20261002-1"></script>
+  <script src="halley-ancient-data.js?v=showtime-review-20261002-1"></script>
+  <script src="halley-data.js?v=showtime-review-20261002-1"></script>
+  <script src="halley.js?v=showtime-review-20261002-1"></script>
+  <script src="halley-history.js?v=showtime-review-20261002-1"></script>
+  <script src="halley-scale.js?v=showtime-review-20261002-1"></script>
+  <script src="halley-panels.js?v=showtime-review-20261002-1"></script>
+  <script src="app.js?v=showtime-review-20261002-1"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，左侧文本默认层名“文本”）
 # 约定：范围用 ~ 分隔；支持年份或日期（例 1949-10-01）
-# 可用负数表示 BCE（例 -2070~-1600）
+# BCE 推荐写 221BC；裸负数保留旧内部坐标
 # 若无结束（例如 1949~ 或 1949-10-01~），将自动补到当前年/日期
 -2070~-1600,夏
 -1600~-1046,商
@@ -578,7 +578,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   const EXAMPLE_FILE_CONTENTS = {
     'examples/中国朝代.csv': `# time,title[,layer]
 # 约定：范围用 ~ 分隔；支持年份或日期（例 1949-10-01）
-# 可用负数表示 BCE（例 -2070~-1600）
+# BCE 推荐写 221BC；裸负数保留旧内部坐标
 # 若无结束（例如 1949~ 或 1949-10-01~），将自动补到当前年/日期
 -2070~-1600,夏
 -1600~-1046,商
@@ -896,6 +896,9 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   let halleyFrame = null;
   let halleyInfo = null;
   let halleyPanels = null;
+  let layerControls = null;
+  const pendingBackgroundIds = new Set();
+  const uiText = (zh, en) => document.documentElement.lang.startsWith('en') ? en : zh;
 
   const state = {
     pxPerYear: 2,
@@ -951,6 +954,13 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     restoreHoverTooltipState();
     restoreHalleyScaleState();
     restoreThemeState();
+    layerControls = window.ShowtimeLayerControls.init({
+      getLayers: () => state.layerOrder.map(name => ({ name, hidden: isLayerHidden(name),
+        color: pickColorForLayer(name), count: (state.byLayer.get(name) || []).length })),
+      onFit: (layer) => { closeToolbarMenus(); fitLayer(layer); },
+      onToggle: toggleLayerHidden,
+      onMenu: (layer, rect) => { closeToolbarMenus(); showLayerMenu(rect.left, rect.bottom, layer); },
+    });
     halleyInfo = window.ShowtimeHalleyScale.initInfo((entry) => {
       setHalleyScaleEnabled(true);
       setViewToSpan(230, entry.time);
@@ -996,17 +1006,25 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       halleyPanels.refresh();
       updateThemeButton();
       updateZoomReadout();
-      draw();
+      syncTextImportControls();
+      layerControls.refresh();
+      resizeCanvas();
     });
     resizeCanvas();
-    loadCsvTextarea();
-    runSelfTests();
+    loadCsvTextarea({ initial: true });
+    if (new URLSearchParams(window.location.search).get('selftest') === '1') runSelfTests();
   }
 
   function cacheDomHandles() {
     ui.canvas = document.getElementById('c');
     ui.fileInput = document.getElementById('file');
     ui.loadButton = document.getElementById('btn-load');
+    ui.openTextButton = document.getElementById('btn-open-text');
+    ui.sidePanel = document.getElementById('csvPanel');
+    ui.textLayerName = document.getElementById('textLayerName');
+    ui.mergeTextSource = document.getElementById('mergeTextSource');
+    ui.textImportPreview = document.getElementById('textImportPreview');
+    ui.textImportStatus = document.getElementById('textImportStatus');
     ui.resetButton = document.getElementById('btn-reset');
     ui.loadExampleButton = document.getElementById('btn-load-example');
     ui.loadBackgroundButton = document.getElementById('btn-load-background');
@@ -1036,6 +1054,10 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ui.layerMenuColor = document.getElementById('menuColor');
     ui.layerMenuDelete = document.getElementById('menuDelete');
     ui.layerMenuCancel = document.getElementById('menuCancel');
+    ui.layerMenuName = document.getElementById('layerMenuName');
+    ui.layerMenuFit = document.getElementById('menuFit');
+    ui.layerMenuMoveUp = document.getElementById('menuMoveUp');
+    ui.layerMenuMoveDown = document.getElementById('menuMoveDown');
     ui.colorMenu = document.getElementById('colorMenu');
     ui.colorSwatches = document.getElementById('colorSwatches');
     ui.colorMenuReset = document.getElementById('menuColorReset');
@@ -1236,16 +1258,19 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     let match = upper.match(/^(\d+)\s*(BC|BCE)$/i);
     if (match) {
       const year = parseInt(match[1], 10);
-      return -(year - 1);
+      return year > 0 && Number.isSafeInteger(year) ? -(year - 1) : null;
     }
 
-    match = s.match(/^(?:公元)?前\s*(\d+)/i);
+    match = s.match(/^(?:公元)?前\s*(\d+)\s*年?$/i);
     if (match) {
       const year = parseInt(match[1], 10);
-      return -(year - 1);
+      return year > 0 && Number.isSafeInteger(year) ? -(year - 1) : null;
     }
 
-    if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+    if (/^-?\d+$/.test(s)) {
+      const value = Number(s);
+      return Number.isSafeInteger(value) ? value : null;
+    }
     return null;
   }
 
@@ -1308,7 +1333,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
     const clockToken = '(?:[T\\s]+\\d{1,2}(?::\\d{1,2}(?::\\d{1,2})?)?)';
     const dateToken = '(?:\\d{3,6}[/-]\\d{1,2}(?:[/-]\\d{1,2}(?:' + clockToken + ')?)?)';
-    const yearToken = '(?:-?\\d+|\\d+\\s*(?:BC|BCE)|(?:公元)?前\\s*\\d+)';
+    const yearToken = '(?:-?\\d+|\\d+\\s*(?:BC|BCE)|(?:公元)?前\\s*\\d+\\s*年?)';
     const timeToken = '(?:' + dateToken + '|' + yearToken + ')';
     const rangePattern = new RegExp(
       '^\\s*(' + timeToken + ')\\s*(?:~|–|—|－|-|〜|～|至|到)\\s*(' + timeToken + ')?\\s*$',
@@ -1319,7 +1344,8 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       const start = parseTimeToken(match[1]);
       let end = parseTimeToken(match[2]);
       if (start == null) return null;
-      if (end == null) end = currentTokenForPrecision(start.precision);
+      if (match[2] && end == null) return null;
+      if (!match[2]) end = currentTokenForPrecision(start.precision);
       return makeTimeRange(start, end);
     }
 
@@ -1327,49 +1353,17 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function parseCSVLine(line) {
-    const fields = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i += 1) {
-      const ch = line[i];
-      if (ch === '"') {
-        const next = line[i + 1];
-        if (inQuotes && next === '"') {
-          current += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-        continue;
-      }
-      if (ch === ',' && !inQuotes) {
-        fields.push(current);
-        current = '';
-        continue;
-      }
-      current += ch;
-    }
-
-    fields.push(current);
-    return fields.map((field) => field.trim());
+    return window.ShowtimeCsv.parseCSVLine(line);
   }
 
   function parseCSV(text, layerName = DEFAULT_LAYER_NAME) {
-    let source = text || '';
-    if (source && source.charCodeAt(0) === 0xfeff) source = source.slice(1);
+    return window.ShowtimeCsv.parseCSV(text, layerName);
+  }
 
-    const rows = [];
-    for (const rawLine of source.split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (!line) continue;
-      const fields = parseCSVLine(line);
-      const time = fields[0] ?? '';
-      if (!time || time.startsWith('#')) continue;
-      const title = fields.length > 1 ? fields.slice(1).join(',').trim() : '';
-      rows.push({ time: time.trim(), title, layer: layerName });
-    }
-    return rows;
+  function parseCsvImport(text, layerName) {
+    const rows = parseCSV(text, layerName);
+    const events = rowsToEvents(rows);
+    return { events, skippedRows: rows.length - events.length };
   }
 
   function basenameWithoutExt(path) {
@@ -1555,18 +1549,9 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     }
   }
 
-  function resolveLayerName(baseLayerName) {
+  function resolveLayerName(baseLayerName, merge = !!ui.mergeSameSource?.checked) {
     const base = baseLayerName || DEFAULT_LAYER_NAME;
-    if (!ui.mergeSameSource || ui.mergeSameSource.checked) return base;
-    const used = new Set(state.data.map((event) => event.layer));
-    if (!used.has(base)) return base;
-    let index = 2;
-    let candidate = `${base} #${index}`;
-    while (used.has(candidate)) {
-      index += 1;
-      candidate = `${base} #${index}`;
-    }
-    return candidate;
+    return merge ? base : nextAvailableLayerName(base);
   }
 
   function nextAvailableLayerName(baseLayerName, reservedLayerNames = new Set()) {
@@ -1583,20 +1568,22 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return candidate;
   }
 
-  function resolveLayerNameForFileBatch(baseLayerName, reservedLayerNames) {
-    const preferred = resolveLayerName(baseLayerName);
+  function resolveLayerNameForFileBatch(baseLayerName, reservedLayerNames, merge = !!ui.mergeSameSource?.checked) {
+    const preferred = resolveLayerName(baseLayerName, merge);
     if (!reservedLayerNames || !reservedLayerNames.has(preferred)) return preferred;
     return nextAvailableLayerName(baseLayerName, reservedLayerNames);
   }
 
   function formatCsvImportToast(loadedFiles, ignoredCsvCount = 0) {
+    const skippedRows = loadedFiles.reduce((sum, file) => sum + (file.skippedRows || 0), 0);
+    const warning = skippedRows ? uiText(`；忽略 ${skippedRows} 行无效时间`, `; skipped ${skippedRows} row(s) with invalid times`) : '';
     const ignoredText = ignoredCsvCount
       ? `；另有 ${ignoredCsvCount} 个 ZIP 内 CSV 超出 ${ZIP_CSV_IMPORT_LIMIT} 个上限，已忽略`
       : '';
-    if (loadedFiles.length === 1) return `已加载 CSV：${loadedFiles[0].layerName}${ignoredText}`;
+    if (loadedFiles.length === 1) return `已加载 CSV：${loadedFiles[0].layerName}${ignoredText}${warning}`;
     const preview = loadedFiles.slice(0, 3).map((item) => item.layerName).join('、');
     const suffix = loadedFiles.length > 3 ? '...' : '';
-    return `已加载 ${loadedFiles.length} 个 CSV 图层：${preview}${suffix}${ignoredText}`;
+    return `已加载 ${loadedFiles.length} 个 CSV 图层：${preview}${suffix}${ignoredText}${warning}`;
   }
 
   function formatCsvImportFailureMessage(failedFiles) {
@@ -1699,7 +1686,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   function displayEventRange(event) {
     const start = formatTimeValue(event.start, event.startPrecision, event.startDate, { compactThreshold: 1e4 });
     const end = formatTimeValue(event.end, event.endPrecision, event.endDate, { compactThreshold: 1e4 });
-    return start === end ? start : `${start}~${end}`;
+    return window.ShowtimeI18n.localizeCanvasLabel(start === end ? start : `${start}~${end}`);
   }
 
   function personProfile(event) {
@@ -1789,7 +1776,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function getLayerLabelText(layer, options = {}) {
-    return options.hidden ? `${layer} [已隐藏]` : layer;
+    return options.hidden ? `${layer} ${uiText('[已隐藏]', '[hidden]')}` : layer;
+  }
+
+  function fillDataText(text, ...args) {
+    window.ShowtimeI18n.fillDataText(ctx, text, ...args);
   }
 
   function wrapLayerLabelLines(text, maxLines = 2) {
@@ -1888,6 +1879,8 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
 
   function setSidePanelCollapsed(collapsed) {
     document.body.classList.toggle('side-collapsed', collapsed);
+    if (collapsed && ui.sidePanel.contains(document.activeElement)) ui.sideDrawerButton.focus();
+    ui.sidePanel.inert = collapsed;
     if (ui.sideDrawerButton) {
       ui.sideDrawerButton.setAttribute('aria-label', collapsed ? '显示左栏' : '隐藏左栏');
       ui.sideDrawerButton.title = collapsed ? '显示左栏' : '隐藏左栏';
@@ -1905,6 +1898,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       if (saved === '0' || saved === '1') collapsed = saved === '1';
     } catch {}
     document.body.classList.toggle('side-collapsed', collapsed);
+    ui.sidePanel.inert = collapsed;
     if (ui.sideDrawerButton) {
       ui.sideDrawerButton.setAttribute('aria-label', collapsed ? '显示左栏' : '隐藏左栏');
       ui.sideDrawerButton.title = collapsed ? '显示左栏' : '隐藏左栏';
@@ -2067,11 +2061,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     const x2 = yearToX(displayRange.end);
     const isPoint = Math.abs(displayRange.start - displayRange.end) <= TIME_EPSILON;
 
-    if (x2 < 0 || x1 > canvasWidth) return null;
+    if (x2 < state.leftPad || x1 > canvasWidth - state.rightPad) return null;
 
     if (isPoint) {
       const radius = Math.min(6, (state.laneHeight - 2) / 2);
-      const cx = clamp(x1, state.leftPad, canvasWidth - state.rightPad);
+      const cx = x1;
       const cy = top + (state.laneHeight - 2) / 2;
       return {
         event,
@@ -2089,6 +2083,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     const rx = Math.max(x1, state.leftPad);
     const rawRw = Math.min(x2, canvasWidth - state.rightPad) - rx;
     if (rawRw <= 0) return null;
+    if (rawRw <= 1 && !displayRange.expandedPoint) return null;
     const rw = displayRange.expandedPoint ? Math.max(rawRw, 3) : rawRw;
     return {
       event,
@@ -2267,18 +2262,22 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
     for (let index = 0; index < labelLines.length; index += 1) {
-      ctx.fillText(labelLines[index], state.leftPad - 10, layerTop + 2 + index * 15);
+      fillDataText(labelLines[index], state.leftPad - 10, layerTop + 2 + index * 15);
     }
 
     if (hidden) {
       ctx.fillStyle = theme.hidden;
       ctx.font = '12px system-ui, sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText('右键图层名称可重新显示', state.leftPad + 12, layerTop + 6);
+      ctx.fillText(uiText('在“图层”菜单中可重新显示', 'Show this layer in the Layers menu'), state.leftPad + 12, layerTop + 6);
       ctx.restore();
       return;
     }
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(state.leftPad, layerTop, width - state.leftPad - state.rightPad, layerHeight);
+    ctx.clip();
     for (const event of events) {
       const top = layerTop + 3 + event.__lane * (state.laneHeight + state.laneGap);
       const displayRange = getEventDisplayRange(event);
@@ -2286,10 +2285,10 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       const x2 = yearToX(displayRange.end);
       const isPoint = Math.abs(displayRange.start - displayRange.end) <= TIME_EPSILON;
 
-      if (x2 < 0 || x1 > width) continue;
+      if (x2 < state.leftPad || x1 > width - state.rightPad) continue;
 
       if (isPoint) {
-        const cx = clamp(x1, state.leftPad, width - state.rightPad);
+        const cx = x1;
         const cy = top + (state.laneHeight - 2) / 2;
         const radius = Math.min(6, (state.laneHeight - 2) / 2);
 
@@ -2314,7 +2313,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         ctx.font = '12px system-ui, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(`${event.title}  ${displayEventRange(event)}`, cx + radius + 8, cy);
+        fillDataText(`${event.title}  ${displayEventRange(event)}`, cx + radius + 8, cy);
         continue;
       }
 
@@ -2336,11 +2335,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         ctx.font = '12px system-ui, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(`${event.title}  ${displayEventRange(event)}`, rx + 10, top + (state.laneHeight - 2) / 2);
+        fillDataText(`${event.title}  ${displayEventRange(event)}`, rx + 10, top + (state.laneHeight - 2) / 2);
         ctx.restore();
       }
     }
 
+    ctx.restore();
     if (ghost) {
       ctx.strokeStyle = '#5fa8ff';
       ctx.setLineDash([6, 6]);
@@ -2680,13 +2680,15 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     draw();
   }
 
-  function getDataBounds() {
-    if (!state.data.length) return null;
-    const ranges = state.data.map(getEventDisplayRange);
-    return {
-      minYear: Math.min(...ranges.map((range) => range.start)),
-      maxYear: Math.max(...ranges.map((range) => range.end)),
-    };
+  function getDataBounds(events = state.data.filter(event => !isLayerHidden(event.layer))) {
+    let minYear = Infinity;
+    let maxYear = -Infinity;
+    for (const event of events) {
+      const range = getEventDisplayRange(event);
+      minYear = Math.min(minYear, range.start);
+      maxYear = Math.max(maxYear, range.end);
+    }
+    return Number.isFinite(minYear) ? { minYear, maxYear } : null;
   }
 
   function setViewToSpan(spanYears, centerYear) {
@@ -2721,6 +2723,8 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       state.layout.set(layer, layoutLanes(state.byLayer.get(layer) || []));
     }
     syncCanvasSize();
+    layerControls?.refresh();
+    syncTextImportControls();
   }
 
   function resetView() {
@@ -2728,16 +2732,47 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     if (!bounds) return;
     const width = ui.canvas.clientWidth - state.leftPad - state.rightPad;
     const years = bounds.maxYear - bounds.minYear || 10;
-    state.pxPerYear = clamp(width / years, MIN_PX_PER_YEAR, MAX_PX_PER_YEAR);
+    state.pxPerYear = clamp(Math.max(1, width - 20) / years, MIN_PX_PER_YEAR, MAX_PX_PER_YEAR);
     state.viewStart = bounds.minYear - 10 / state.pxPerYear;
     syncSlider();
     draw();
   }
 
-  function ingest(events) {
+  function ingest(events, { fit = true } = {}) {
     state.data = state.data.concat(events);
     rebuildFromState();
-    resetView();
+    if (fit) resetView();
+    else draw();
+  }
+
+  function fitLayer(layer) {
+    const events = state.byLayer.get(layer);
+    if (!events?.length) return false;
+    if (isLayerHidden(layer)) {
+      state.hiddenLayers.delete(layer);
+      rebuildFromState();
+    }
+    const bounds = getDataBounds(events);
+    setViewToSpan(Math.max(10, (bounds.maxYear - bounds.minYear) * 1.12), (bounds.minYear + bounds.maxYear) / 2);
+    const box = state.layerRects.get(layer);
+    if (box) {
+      const y = ui.canvas.getBoundingClientRect().top + box.top;
+      const header = document.querySelector('header').offsetHeight;
+      if (y < header || y > window.innerHeight - 80) window.scrollBy(0, y - header - 20);
+    }
+    return true;
+  }
+
+  function moveLayer(layer, delta) {
+    const index = state.layerOrder.indexOf(layer);
+    const next = index + delta;
+    if (index < 0 || next < 0 || next >= state.layerOrder.length) return false;
+    state.layerOrder.splice(index, 1);
+    state.layerOrder.splice(next, 0, layer);
+    state.layers = state.layerOrder.slice();
+    layerControls?.refresh();
+    draw();
+    return true;
   }
 
   function deleteLayer(layer) {
@@ -2781,6 +2816,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   function setLayerColor(layer, color) {
     if (!layer || !state.layerOrder.includes(layer) || !color) return false;
     state.layerColors.set(layer, color);
+    layerControls?.refresh();
     draw();
     return true;
   }
@@ -2814,6 +2850,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     const failed = [];
     const importedEvents = [];
     let ignoredCsvCount = 0;
+    const merge = !!ui.mergeSameSource.checked;
 
     for (const file of files) {
       const batch = await getUploadCsvSources(file);
@@ -2821,17 +2858,17 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       ignoredCsvCount += batch.ignoredCsvCount || 0;
 
       for (const source of batch.sources) {
-        const layerName = resolveLayerNameForFileBatch(source.baseLayerName, reservedLayerNames);
         try {
           const text = await source.readText();
-          const events = rowsToEvents(parseCSV(text, layerName));
+          const layerName = resolveLayerNameForFileBatch(source.baseLayerName, reservedLayerNames, merge);
+          const { events, skippedRows } = parseCsvImport(text, layerName);
           if (!events.length) {
             failed.push({ fileName: source.fileName, reason: '未解析到任何事件' });
             continue;
           }
           reservedLayerNames.add(layerName);
           importedEvents.push(...events);
-          loaded.push({ fileName: source.fileName, layerName, count: events.length });
+          loaded.push({ fileName: source.fileName, layerName, count: events.length, skippedRows });
         } catch (error) {
           failed.push({
             fileName: source.fileName,
@@ -2886,49 +2923,62 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   async function loadExampleFile(path) {
+    const merge = !!ui.mergeSameSource.checked;
     const text = await fetchTextFile(path, EXAMPLE_FILE_CONTENTS);
-    const layerName = resolveLayerName(basenameWithoutExt(path));
-    const rows = parseCSV(text, layerName);
-    const events = rowsToEvents(rows);
+    const layerName = resolveLayerName(basenameWithoutExt(path), merge);
+    const { events, skippedRows } = parseCsvImport(text, layerName);
     if (!events.length) throw new Error('示例文件中未解析到有效事件');
     ingest(events);
+    return { layerName, count: events.length, skippedRows };
   }
 
   function backgroundLayerName(entry) {
     return `背景：${entry.name}`;
   }
 
+  function hasBackgroundEntry(entry) {
+    return state.data.some(event => event.sourceKind === 'background' && event.sourceId === entry.id);
+  }
+
   async function loadBackgroundEntries(entries) {
     const allEvents = [];
     const loaded = [];
     const skipped = [];
-    for (const entry of entries) {
-      const layerName = backgroundLayerName(entry);
-      if (state.layerOrder.includes(layerName)) {
-        skipped.push(entry.name);
-        continue;
+    const requested = entries.filter(entry => !hasBackgroundEntry(entry) && !pendingBackgroundIds.has(entry.id));
+    const reservedLayerNames = new Set();
+    for (const entry of entries) if (!requested.includes(entry)) skipped.push(entry.name);
+    for (const entry of requested) pendingBackgroundIds.add(entry.id);
+    try {
+      for (const entry of requested) {
+        const text = await fetchTextFile(entry.file);
+        const layerName = nextAvailableLayerName(backgroundLayerName(entry), reservedLayerNames);
+        reservedLayerNames.add(layerName);
+        const rows = parseCSV(text, layerName);
+        const events = rowsToEvents(rows);
+        for (const event of events) { event.sourceKind = 'background'; event.sourceId = entry.id; }
+        if (!events.length) throw new Error(`${entry.name} 未解析到有效事件`);
+        allEvents.push(...events);
+        loaded.push(entry.name);
       }
-      const text = await fetchTextFile(entry.file);
-      const rows = parseCSV(text, layerName);
-      const events = rowsToEvents(rows);
-      if (!events.length) throw new Error(`${entry.name} 未解析到有效事件`);
-      allEvents.push(...events);
-      loaded.push(entry.name);
+      if (allEvents.length) {
+        ingest(allEvents, { fit: !state.data.length });
+      }
+      return { loaded, skipped };
+    } finally {
+      for (const entry of requested) pendingBackgroundIds.delete(entry.id);
     }
-    if (allEvents.length) {
-      state.data = state.data.concat(allEvents);
-      rebuildFromState();
-      resetView();
-    }
-    return { loaded, skipped };
   }
 
   function includesAny(source, keywords) {
     return keywords.some((keyword) => source.includes(keyword));
   }
 
-  function currentDataSearchText() {
-    return state.data
+  function getResearchEvents() {
+    return state.data.filter(event => event.sourceKind !== 'background' && !event.halleyObservationId && !isLayerHidden(event.layer));
+  }
+
+  function currentDataSearchText(events = getResearchEvents()) {
+    return events
       .map((event) => `${event.title || ''} ${event.layer || ''}`)
       .join(' ')
       .toLowerCase();
@@ -3037,20 +3087,24 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function recommendBackgroundLayers(limit = 3) {
-    const bounds = getDataBounds();
-    const text = currentDataSearchText();
-    const scored = BACKGROUND_LIBRARY
-      .filter((entry) => !state.layerOrder.includes(backgroundLayerName(entry)))
+    const events = getResearchEvents();
+    const bounds = getDataBounds(events);
+    const text = currentDataSearchText(events);
+    const available = BACKGROUND_LIBRARY.filter(entry => !hasBackgroundEntry(entry) && !pendingBackgroundIds.has(entry.id));
+    const scored = available
       .map((entry) => ({ entry, score: scoreBackgroundEntry(entry, bounds, text) }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name));
-    if (!scored.length) return BACKGROUND_LIBRARY.slice(0, limit);
+    if (!scored.length) return available.slice(0, limit);
     return scored.slice(0, limit).map((item) => item.entry);
   }
 
   function closeToolbarMenus(except = null) {
     document.querySelectorAll('.toolbar-menu[open]').forEach((menu) => {
-      if (menu !== except) menu.removeAttribute('open');
+      if (menu !== except) {
+        if (menu.contains(document.activeElement)) menu.querySelector('summary').focus({ preventScroll: true });
+        menu.removeAttribute('open');
+      }
     });
   }
 
@@ -3091,6 +3145,15 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ui.layerMenuColor?.addEventListener('click', handleMenuColor);
     ui.layerMenuDelete?.addEventListener('click', handleMenuDelete);
     ui.layerMenuCancel?.addEventListener('click', hideLayerMenu);
+    for (const [button, action] of [[ui.layerMenuFit, fitLayer],
+      [ui.layerMenuMoveUp, layer => moveLayer(layer, -1)], [ui.layerMenuMoveDown, layer => moveLayer(layer, 1)]]) {
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        const layer = menuLayer;
+        hideLayerMenu();
+        if (layer) action(layer);
+      });
+    }
     ui.colorSwatches?.addEventListener('click', handleColorSwatchClick);
     ui.colorMenuReset?.addEventListener('click', handleColorReset);
     ui.colorMenuCancel?.addEventListener('click', hideColorMenu);
@@ -3125,18 +3188,38 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   function bindUIActions() {
     ui.themeButton.addEventListener('click', () => setTheme(state.theme === 'light' ? 'dark' : 'light'));
     ui.fileInput?.addEventListener('change', async (event) => {
-      const result = await loadLocalCsvFiles(event.target.files);
-      event.target.value = '';
-      if (result.loaded.length) {
-        toast(formatCsvImportToast(result.loaded, result.ignoredCsvCount));
-      } else if (result.ignoredCsvCount) {
-        toast(`ZIP 内 CSV 最多导入 ${ZIP_CSV_IMPORT_LIMIT} 个，已忽略 ${result.ignoredCsvCount} 个`);
-      }
-      if (result.failed.length) alert(formatCsvImportFailureMessage(result.failed));
-      closeToolbarMenus();
+      ui.fileInput.disabled = true;
+      try {
+        const result = await loadLocalCsvFiles(event.target.files);
+        event.target.value = '';
+        if (result.loaded.length) {
+          toast(formatCsvImportToast(result.loaded, result.ignoredCsvCount));
+        } else if (result.ignoredCsvCount) {
+          toast(`ZIP 内 CSV 最多导入 ${ZIP_CSV_IMPORT_LIMIT} 个，已忽略 ${result.ignoredCsvCount} 个`);
+        }
+        if (result.failed.length) alert(formatCsvImportFailureMessage(result.failed));
+        closeToolbarMenus();
+      } finally { ui.fileInput.disabled = false; }
     });
 
-    ui.loadButton?.addEventListener('click', loadCsvTextarea);
+    ui.loadButton?.addEventListener('click', () => loadCsvTextarea());
+    ui.openTextButton?.addEventListener('click', () => {
+      closeToolbarMenus();
+      setSidePanelCollapsed(false);
+      ui.csvText.focus();
+    });
+    const syncMerge = (input) => {
+      ui.mergeSameSource.checked = input.checked;
+      ui.mergeTextSource.checked = input.checked;
+      syncTextImportControls();
+    };
+    ui.mergeSameSource.addEventListener('change', () => syncMerge(ui.mergeSameSource));
+    ui.mergeTextSource.addEventListener('change', () => syncMerge(ui.mergeTextSource));
+    ui.textLayerName.addEventListener('input', syncTextImportControls);
+    ui.csvText.addEventListener('input', () => { ui.textImportStatus.textContent = ''; });
+    ui.csvText.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); loadCsvTextarea(); }
+    });
     ui.resetButton?.addEventListener('click', resetView);
     ui.pointDisplayMode?.addEventListener('change', (event) => {
       setPointDisplayMode(event.target.value);
@@ -3158,20 +3241,24 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     });
 
     ui.loadExampleButton?.addEventListener('click', async () => {
+      if (ui.loadExampleButton.disabled) return;
       const path = ui.exampleSelect?.value;
       if (!path) return;
       try {
-        await loadExampleFile(path);
-        toast(`已加载示例：${basenameWithoutExt(path)}`);
+        ui.loadExampleButton.disabled = true;
+        const result = await loadExampleFile(path);
+        toast(formatCsvImportToast([result]));
       } catch (error) {
         alert(`加载示例失败：${path}\n${error?.message || error}`);
-      }
+      } finally { ui.loadExampleButton.disabled = false; }
     });
 
     ui.loadBackgroundButton?.addEventListener('click', async () => {
+      if (ui.loadBackgroundButton.disabled) return;
       const entry = getBackgroundEntry(ui.backgroundSelect?.value);
       if (!entry) return;
       try {
+        ui.loadBackgroundButton.disabled = true;
         const result = await loadBackgroundEntries([entry]);
         if (result.loaded.length) {
           toast(`已加载背景：${result.loaded.join('、')}`);
@@ -3180,16 +3267,18 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         }
       } catch (error) {
         alert(`加载背景失败：${entry.name}\n${error?.message || error}`);
-      }
+      } finally { ui.loadBackgroundButton.disabled = false; }
     });
 
     ui.loadRecommendedBackgroundButton?.addEventListener('click', async () => {
+      if (ui.loadRecommendedBackgroundButton.disabled) return;
       const entries = recommendBackgroundLayers(3);
       if (!entries.length) {
         toast('暂无可推荐背景');
         return;
       }
       try {
+        ui.loadRecommendedBackgroundButton.disabled = true;
         const result = await loadBackgroundEntries(entries);
         if (result.loaded.length) {
           toast(`已加载推荐背景：${result.loaded.join('、')}`);
@@ -3198,7 +3287,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         }
       } catch (error) {
         alert(`加载推荐背景失败：${error?.message || error}`);
-      }
+      } finally { ui.loadRecommendedBackgroundButton.disabled = false; }
     });
 
     ui.sideDrawerButton?.addEventListener('click', () => {
@@ -3232,14 +3321,38 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     });
   }
 
-  function loadCsvTextarea() {
-    const rows = parseCSV(ui.csvText.value, resolveLayerName(TEXT_LAYER_NAME));
-    const events = rowsToEvents(rows);
-    if (!events.length) {
-      alert('左侧文本未解析出事件。\n示例：-2070~-1600,夏');
-      return;
+  function syncTextImportControls() {
+    if (!ui.textImportPreview) return;
+    const base = ui.textLayerName.value.trim() || TEXT_LAYER_NAME;
+    const layer = resolveLayerName(base);
+    const append = !!ui.mergeSameSource.checked && state.byLayer.has(layer);
+    ui.mergeTextSource.checked = !!ui.mergeSameSource.checked;
+    ui.loadButton.textContent = append ? uiText('追加到同名图层', 'Append to same-name layer') : uiText('添加为新图层', 'Add as a new layer');
+    ui.textImportPreview.textContent = append
+      ? uiText(`将追加到“${layer}”，保留原有事件。`, `Will append to “${layer}”, keeping existing events.`)
+      : uiText(`将在下方新建“${layer}”图层。`, `Will add “${layer}” as a separate layer below.`);
+  }
+
+  function loadCsvTextarea({ initial = false } = {}) {
+    try {
+      const layerName = resolveLayerName(ui.textLayerName.value.trim() || TEXT_LAYER_NAME);
+      const append = state.byLayer.has(layerName);
+      const { events, skippedRows } = parseCsvImport(ui.csvText.value, layerName);
+      if (!events.length) throw new Error('左侧文本未解析出事件。\n示例：-2070~-1600,夏');
+      ingest(events);
+      if (!initial) {
+        const message = uiText(`${append ? '已追加到' : '已添加图层'}：${layerName} · ${events.length} 个事件`,
+          `${append ? 'Appended to' : 'Added layer'}: ${layerName} · ${events.length} events`)
+          + (skippedRows ? uiText(`；忽略 ${skippedRows} 行无效时间`, `; skipped ${skippedRows} row(s) with invalid times`) : '');
+        ui.textImportStatus.textContent = message;
+        toast(message);
+        if (window.innerWidth <= MOBILE_BREAKPOINT) setSidePanelCollapsed(true);
+      }
+      return { layerName, count: events.length, skippedRows };
+    } catch (error) {
+      alert(error.message);
+      return null;
     }
-    ingest(events);
   }
 
   function getPointerPanMode(dx, dy) {
@@ -3346,7 +3459,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         const hit = findEventAtCanvasPoint(event.clientX - rect.left, event.clientY - rect.top);
         const record = hit && window.ShowtimeHalleyHistory.getRecord(hit.event.halleyObservationId);
         if (record) halleyPanels.openHistory(record.h);
-        else if (hit && !isPointEvent(hit.event)) halleyPanels.openPerson(hit.event);
+        else if (hit) showEventTooltip(hit.event, event.clientX, event.clientY);
       }
     }
     if (!state.drag.active || !state.drag.layer) return;
@@ -3362,6 +3475,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     state.layerOrder = order;
     state.layers = state.layerOrder.slice();
     state.drag = { active: false, layer: null, grabDy: 0, mouseY: 0, overlayY: 0, targetIndex: 0 };
+    layerControls?.refresh();
     draw();
   }
 
@@ -3562,20 +3676,28 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     if (!ui.layerMenu) return;
     hideColorMenu();
     menuLayer = layer;
-    const pad = 8;
-    const width = 196;
+    ui.layerMenuName.textContent = layer;
+    ui.layerMenuMoveUp.disabled = state.layerOrder.indexOf(layer) === 0;
+    ui.layerMenuMoveDown.disabled = state.layerOrder.indexOf(layer) === state.layerOrder.length - 1;
     if (ui.layerMenuToggleHidden) {
       ui.layerMenuToggleHidden.textContent = isLayerHidden(layer) ? '显示该层' : '隐藏该层';
       ui.layerMenuToggleHidden.className = isLayerHidden(layer) ? 'secondary' : '';
     }
-    const height = Math.min(ui.layerMenu.offsetHeight || 184, window.innerHeight - pad * 2);
-    ui.layerMenu.style.left = `${Math.min(x, window.innerWidth - width - pad)}px`;
-    ui.layerMenu.style.top = `${Math.min(y, window.innerHeight - height - pad)}px`;
-    ui.layerMenu.style.display = 'block';
+    positionPopup(ui.layerMenu, x, y);
+    ui.layerMenuFit.focus({ preventScroll: true });
+  }
+
+  function positionPopup(menu, x, y) {
+    const pad = 8;
+    menu.style.display = 'block';
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${clamp(x, pad, Math.max(pad, window.innerWidth - rect.width - pad))}px`;
+    menu.style.top = `${clamp(y, pad, Math.max(pad, window.innerHeight - rect.height - pad))}px`;
   }
 
   function hideLayerMenu() {
     if (!ui.layerMenu) return;
+    if (ui.layerMenu.contains(document.activeElement)) document.querySelector('#layersMenu summary').focus({ preventScroll: true });
     ui.layerMenu.style.display = 'none';
     menuLayer = null;
   }
@@ -3583,16 +3705,13 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   function showColorMenu(x, y, layer) {
     if (!ui.colorMenu) return;
     colorMenuLayer = layer;
-    const pad = 8;
-    const width = 228;
-    const height = 178;
-    ui.colorMenu.style.left = `${Math.min(x, window.innerWidth - width - pad)}px`;
-    ui.colorMenu.style.top = `${Math.min(y, window.innerHeight - height - pad)}px`;
-    ui.colorMenu.style.display = 'block';
+    positionPopup(ui.colorMenu, x, y);
+    ui.colorMenu.querySelector('button').focus({ preventScroll: true });
   }
 
   function hideColorMenu() {
     if (!ui.colorMenu) return;
+    if (ui.colorMenu.contains(document.activeElement)) document.querySelector('#layersMenu summary').focus({ preventScroll: true });
     ui.colorMenu.style.display = 'none';
     colorMenuLayer = null;
   }
@@ -3740,6 +3859,9 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     setHalleyScaleEnabled(backup.halleyScaleEnabled, { skipStorage: true, skipResize: true });
     if (ui.pointDisplayMode) ui.pointDisplayMode.value = state.pointDisplayMode;
     if (ui.hoverTooltip) ui.hoverTooltip.checked = state.hoverTooltipEnabled;
+    syncCanvasSize();
+    layerControls?.refresh();
+    syncTextImportControls();
     hideEventTooltip();
     syncSlider();
     draw();
@@ -4351,6 +4473,87 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       } finally {
         restoreState(backup);
       }
+    });
+    add('parseTimeField: invalid explicit endpoint never becomes an open range', () => {
+      return parseTimeField('1949~1950-13') === null && parseTimeField('1949~1950-02-30') === null
+        && parseTimeField('1949~0BC') === null && parseTimeField('1949~').end === CURRENT_YEAR;
+    });
+    add('parseYearToken: reject historical BCE zero and trailing junk, preserve legacy zero', () => {
+      return parseYearToken('0BC') === null && parseYearToken('公元前0') === null
+        && parseYearToken('公元前221abc') === null && parseYearToken('0') === 0
+        && parseYearToken('1BC') === 0 && parseYearToken('公元前221年') === -220;
+    });
+    add('parseTimeField: Chinese BCE ranges retain both endpoints', () => {
+      const range = parseTimeField('公元前221~公元前206');
+      const years = parseTimeField('前221年~前206年');
+      return range?.start === -220 && range?.end === -205 && years?.start === -220 && years?.end === -205;
+    });
+    add('parseCSV: multiline quoted titles, escaped quotes and headers', () => {
+      const rows = parseCSV('time,title\n1037~1101,"苏轼,\n字\"\"子瞻\"\""\n1066,彗星', '研究');
+      return rows.length === 2 && rows[0].title === '苏轼,\n字"子瞻"' && rows[1].time === '1066';
+    });
+    add('parseCsvImport: invalid dates are counted, headers are not', () => {
+      const result = parseCsvImport('time,title\n1037~1101,苏轼\n1949~1950-13,错误日期', '研究');
+      return result.events.length === 1 && result.skippedRows === 1;
+    });
+    add('text import: separate rows by default, explicit append preserves both rows', () => {
+      const backup = snapshotState();
+      const text = ui.csvText.value; const name = ui.textLayerName.value; const merge = ui.mergeSameSource.checked;
+      try {
+        ui.csvText.value = '1037~1101,苏轼'; ui.textLayerName.value = 'Review import'; ui.mergeSameSource.checked = false;
+        const first = loadCsvTextarea({ initial: true }); const second = loadCsvTextarea({ initial: true });
+        ui.mergeSameSource.checked = true; loadCsvTextarea({ initial: true });
+        return first.layerName === 'Review import' && second.layerName === 'Review import #2'
+          && state.byLayer.get(first.layerName).length === 2 && state.byLayer.get(second.layerName).length === 1
+          && state.layerOrder.indexOf(first.layerName) < state.layerOrder.indexOf(second.layerName)
+          && backup.data.every(event => state.data.includes(event));
+      } finally {
+        ui.csvText.value = text; ui.textLayerName.value = name; ui.mergeSameSource.checked = merge; restoreState(backup);
+      }
+    });
+    add('getDataBounds: hidden context does not affect fit', () => {
+      const backup = snapshotState();
+      try {
+        state.data = rowsToEvents(parseCSV('1037~1101,苏轼', '人物')).concat(rowsToEvents(parseCSV('-13800000000~2000,宇宙', '背景')));
+        state.hiddenLayers = new Set(['背景']);
+        const bounds = getDataBounds();
+        state.hiddenLayers.add('人物');
+        return bounds.minYear === 1037 && bounds.maxYear === 1101 && getDataBounds() === null;
+      } finally { restoreState(backup); }
+    });
+    add('getDataBounds: large CSV does not overflow the argument stack', () => {
+      const events = Array.from({ length: 140000 }, (_, i) => ({ start: i, end: i + 1 }));
+      const bounds = getDataBounds(events);
+      return bounds.minYear === 0 && bounds.maxYear === 140000;
+    });
+    add('getEventVisualBox: off-screen points are not clamped to the edges', () => {
+      const width = ui.canvas.clientWidth;
+      const make = x => ({ start: xToYear(x), end: xToYear(x), __lane: 0, startPrecision: 'second' });
+      return getEventVisualBox(make(state.leftPad - 4), state.topPad, width) === null
+        && getEventVisualBox(make(width - state.rightPad + 4), state.topPad, width) === null
+        && getEventVisualBox(make(state.leftPad + 4), state.topPad, width) !== null;
+    });
+    add('background sources: renamed layers remain deduplicated and do not become the research topic', () => {
+      const backup = snapshotState();
+      try {
+        const entry = getBackgroundEntry('science-technology');
+        if (!entry) return false;
+        state.data = [{ title: '望远镜与航天', start: 1600, end: 2000, layer: '改名背景', sourceKind: 'background', sourceId: entry.id },
+          { title: '公共卫生与抗生素', start: 1850, end: 2000, layer: '医学研究' }];
+        state.layerOrder = ['改名背景', '医学研究']; state.hiddenLayers = new Set();
+        return hasBackgroundEntry(entry) && !currentDataSearchText().includes('望远镜')
+          && recommendBackgroundLayers(1)[0]?.id === 'medicine-public-health';
+      } finally { restoreState(backup); }
+    });
+    add('moveLayer: bounded reordering keeps data, colours and visibility', () => {
+      const backup = snapshotState();
+      try {
+        state.data = rowsToEvents(parseCSV('1~2,A', 'L1')).concat(rowsToEvents(parseCSV('3~4,B', 'L2')));
+        state.layerOrder = ['L1', 'L2']; rebuildFromState();
+        const color = pickColorForLayer('L2'); state.hiddenLayers.add('L2');
+        return !moveLayer('L1', -1) && moveLayer('L2', -1) && state.layerOrder.join(',') === 'L2,L1'
+          && state.data.length === 2 && pickColorForLayer('L2') === color && isLayerHidden('L2');
+      } finally { restoreState(backup); }
     });
     add('toolbar menus: close all except requested menu', () => {
       const menus = Array.from(document.querySelectorAll('.toolbar-menu'));

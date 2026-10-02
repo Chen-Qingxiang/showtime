@@ -15,14 +15,18 @@
 <button id="run" type="button">Run smoke tests</button>
 <pre id="results" aria-live="polite">Ready.</pre>
 <div class="frames">
-  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?v=showtime-20261002-4"></iframe>
-  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?v=showtime-20261002-4"></iframe>
+  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?selftest=1&v=showtime-review-20261002-1"></iframe>
+  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?selftest=1&v=showtime-review-20261002-1"></iframe>
 </div>
 <script>
 (() => {
   const output = document.getElementById('results');
   const frames = ['desktop', 'mobile'].map(id => document.getElementById(id));
   const pause = () => new Promise(resolve => setTimeout(resolve, 40));
+  async function waitUntil(fn) {
+    for (let i = 0; i < 200; i++) { if (fn()) return; await pause(); }
+    throw new Error('Timed out waiting for the UI');
+  }
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   let count = 0;
   async function check(name, fn) {
@@ -35,7 +39,7 @@
       await pause();
     };
     await check(`${frame.id}: fresh defaults are Chinese, dark, and Halley off`, async () => {
-      for (const key of ['showtime:halley-scale', 'showtime:language', 'showtime:theme']) localStorage.removeItem(key);
+      for (const key of ['showtime:halley-scale', 'showtime:language', 'showtime:theme', 'showtime:side-collapsed']) localStorage.removeItem(key);
       await reload();
       const d = frame.contentWindow.document;
       assert(!d.getElementById('halleyScale').checked, 'fresh Halley default is on');
@@ -83,6 +87,54 @@
       for (let i = 0; i < 100 && !d.getElementById('testLog').textContent; i++) await pause();
       const log = d.getElementById('testLog').textContent;
       assert(log.includes('✅') && !log.includes('❌'), log);
+    });
+    await check(`${tag}: menus group layer sources and editor opens with an explicit import mode`, async () => {
+      const add = d.getElementById('addLayerMenu');
+      assert(add.contains(d.getElementById('exampleSelect')) && add.contains(d.getElementById('backgroundSelect')), 'sources are split across menus');
+      assert(d.querySelectorAll('.toolbar-menu').length === 4, 'toolbar groups changed unexpectedly');
+      assert(!d.getElementById('mergeSameSource').checked, 'fresh imports unexpectedly merge');
+      assert(d.getElementById('csvPanel').inert, 'collapsed editor remains interactive');
+      add.querySelector('summary').click(); d.getElementById('btn-open-text').click();
+      assert(!d.getElementById('csvPanel').inert && d.activeElement === d.getElementById('csvText'), 'editor is not accessible from Add layer');
+      assert(d.getElementById('languageSelect').tabIndex === -1 && d.getElementById('languageSelect').getAttribute('aria-hidden') === 'true', 'duplicate hidden language control is exposed');
+    });
+    await check(`${tag}: text imports create ordered independent layers; explicit append keeps earlier events`, async () => {
+      const area = d.getElementById('csvText'); const name = d.getElementById('textLayerName');
+      const rows = () => Array.from(d.querySelectorAll('#layerList > li[data-layer]'));
+      const count = rows().length;
+      name.value = 'Review research'; fire(name, 'input'); area.value = '1037~1101,苏轼';
+      d.getElementById('btn-load').click(); await pause();
+      assert(rows().length === count + 1 && rows().at(-1).dataset.layer === 'Review research', 'text did not create a new row');
+      d.getElementById('btn-load').click(); await pause();
+      assert(rows().length === count + 2 && rows().at(-1).dataset.layer === 'Review research #2', 'second import merged by default');
+      const merge = d.getElementById('mergeTextSource'); merge.checked = true; fire(merge, 'change');
+      assert(d.getElementById('mergeSameSource').checked && d.getElementById('btn-load').textContent.includes('Append'), 'import mode controls disagree');
+      d.getElementById('btn-load').click(); await pause();
+      assert(rows().length === count + 2 && rows().find(row => row.dataset.layer === 'Review research').textContent.includes('2 events'), 'append replaced data or created another row');
+      merge.checked = false; fire(merge, 'change'); name.value = ''; fire(name, 'input');
+      if (!d.body.classList.contains('side-collapsed')) d.getElementById('btn-side-drawer').click();
+      assert(d.getElementById('csvPanel').inert, 'closed editor retains keyboard focus targets');
+    });
+    await check(`${tag}: layer manager offers visibility and reorder without right-click`, async () => {
+      const menu = d.getElementById('layersMenu'); menu.querySelector('summary').click();
+      const rows = () => Array.from(d.querySelectorAll('#layerList > li[data-layer]'));
+      let row = rows().find(row => row.dataset.layer === 'Review research #2');
+      row.querySelector('[data-layer-action="toggle"]').click();
+      row = rows().find(row => row.dataset.layer === 'Review research #2');
+      assert(menu.open && row.classList.contains('is-hidden') && row.textContent.includes('Show'), 'visibility control failed');
+      row.querySelector('[data-layer-action="toggle"]').click();
+      rows().find(row => row.dataset.layer === 'Review research #2').querySelector('[data-layer-action="menu"]').click();
+      const popup = d.getElementById('layerMenu').getBoundingClientRect();
+      assert(popup.left >= 0 && popup.right <= w.innerWidth + 1 && popup.top >= 0 && popup.bottom <= w.innerHeight + 1, 'layer popup overflows');
+      d.getElementById('menuMoveUp').click();
+      assert(rows().at(-2).dataset.layer === 'Review research #2', 'reorder did not update layer list');
+    });
+    await check(`${tag}: Canvas data text stays literal in both languages`, async () => {
+      const a = d.createElement('canvas'); const b = d.createElement('canvas');
+      const ac = a.getContext('2d'); const bc = b.getContext('2d'); const text = '背景：中国朝代';
+      language('zh'); await pause(); ac.fillText(text, 10, 20);
+      language('en'); await pause(); w.ShowtimeI18n.fillDataText(bc, text, 10, 20);
+      assert(a.toDataURL() === b.toDataURL(), 'data text was translated while drawing');
     });
     await check(`${tag}: enable/disable preserves the original canvas and CSV`, async () => {
       const csv = d.getElementById('csvText').value; const before = drawSignature();
@@ -177,7 +229,14 @@
         clientX: rect.left + 200, clientY: rect.top + 210, deltaY: -100 }));
       assert(slider.value !== oldZoom, 'wheel did not zoom');
       d.getElementById('backgroundSelect').value = 'china-dynasties';
-      d.getElementById('btn-load-background').click(); await pause(); await pause();
+      const oldView = slider.value;
+      d.getElementById('btn-load-background').click();
+      await waitUntil(() => !d.getElementById('btn-load-background').disabled);
+      assert(slider.value === oldView, 'background moved the research view');
+      const loadedCount = d.querySelectorAll('#layerList > li[data-layer]').length;
+      d.getElementById('btn-load-background').click();
+      await waitUntil(() => !d.getElementById('btn-load-background').disabled);
+      assert(d.querySelectorAll('#layerList > li[data-layer]').length === loadedCount, 'background imported twice');
       assert(d.getElementById('testLog').textContent.includes('toggleLayerHidden'), 'layer regression checks absent');
     });
     await check(`${tag}: extreme zooms and unsupported range render without errors`, async () => {

@@ -7,7 +7,7 @@
 
   const ZH_DEFAULT_SAMPLE = `# time,title（两列；layer 由文件名决定，左侧文本默认层名“文本”）
 # 约定：范围用 ~ 分隔；支持年份或日期（例 1949-10-01）
-# 可用负数表示 BCE（例 -2070~-1600）
+# BCE 推荐写 221BC；裸负数保留旧内部坐标
 # 若无结束（例如 1949~ 或 1949-10-01~），将自动补到当前年/日期
 -2070~-1600,夏
 -1600~-1046,商
@@ -40,7 +40,7 @@
 
   const EN_DEFAULT_SAMPLE = `# time,title (two columns; layer comes from the file name; left-side text uses the “Text” layer)
 # Use ~ for ranges; years and dates are supported (e.g. 1949-10-01)
-# Negative years represent BCE (e.g. -2070~-1600)
+# For BCE use 221BC; bare negative years retain the legacy internal coordinate
 # An open range (e.g. 1949~ or 1949-10-01~) automatically extends to the current year/date
 -2070~-1600,Xia
 -1600~-1046,Shang
@@ -72,6 +72,28 @@
 1949~,People's Republic of China`;
 
   const UI_TEXT = new Map([
+    ['CSV / 示例导入方式', 'CSV / example import mode'],
+    ['追加到同名图层', 'Append to same-name layer'],
+    ['默认新建独立图层；追加会保留原有事件。', 'New layers by default; appending keeps existing events.'],
+    ['粘贴 / 编辑 CSV…', 'Paste / edit CSV…'],
+    ['添加示例图层', 'Add example layer'],
+    ['背景参照', 'Background context'],
+    ['添加背景图层', 'Add background layer'],
+    ['添加推荐背景', 'Add recommended backgrounds'],
+    ['背景添加在下方，保持当前时间视图。', 'Backgrounds are added below without changing the time view.'],
+    ['图层', 'Layers'],
+    ['已加载图层', 'Loaded layers'],
+    ['点击名称定位；更多操作可重排、改色或删除。', 'Click a name to fit its time range; more actions reorder, colour or delete layers.'],
+    ['哈雷工具', 'Halley tools'],
+    ['贴合可见图层', 'Fit visible layers'],
+    ['CSV 编辑器', 'CSV editor'],
+    ['图层名称（可选）', 'Layer name (optional)'],
+    ['默认：文本', 'Default: Text'],
+    ['格式与操作说明', 'Format & controls'],
+    ['历史时间轴；通过图层菜单管理图层', 'History timeline; manage layers using the Layers menu'],
+    ['定位该层', 'Fit layer'],
+    ['上移一层', 'Move up'],
+    ['下移一层', 'Move down'],
     ['添加图层', 'Add layer'],
     ['上传 CSV / ZIP', 'Upload CSV / ZIP'],
     ['加载左侧文本', 'Load text panel'],
@@ -306,7 +328,9 @@
     if (BACKGROUND_NAME_ZH_TO_EN[line]) return BACKGROUND_NAME_ZH_TO_EN[line];
     if (EXAMPLE_NAME_ZH_TO_EN[line]) return EXAMPLE_NAME_ZH_TO_EN[line];
 
-    let match = line.match(/^时间：(.+)$/);
+    let match = line.match(/^CSV 引号未闭合（第 (\d+) 行）$/);
+    if (match) return `Unclosed CSV quote at line ${match[1]}`;
+    match = line.match(/^时间：(.+)$/);
     if (match) return `Time: ${match[1]}`;
     match = line.match(/^选择颜色 (.+)$/);
     if (match) return `Select colour ${match[1]}`;
@@ -470,10 +494,11 @@
   }
 
   function localizeAttributes(root = document) {
-    const elements = root.querySelectorAll?.('[title], [aria-label]') || [];
+    const elements = root.querySelectorAll?.('[title], [aria-label], [placeholder]') || [];
     for (const element of elements) {
       localizeAttribute(element, 'title');
       localizeAttribute(element, 'aria-label');
+      localizeAttribute(element, 'placeholder');
     }
   }
 
@@ -496,10 +521,10 @@
     `<div class="hint-title">Import</div>
           <ul>
             <li>Upload local CSV / ZIP files. Multiple CSVs are supported; up to the first 100 CSVs in a ZIP are imported as separate layers in file-name order.</li>
-            <li>Click “Load text panel” to import the left-side text into the <code>Text</code> layer.</li>
-            <li>Use the “Background” menu to load built-in examples and background layers.</li>
+            <li>Paste CSV in the editor, optionally name the layer, then click the add button.</li>
+            <li>“Add layer” includes uploads, the CSV editor, built-in examples and backgrounds.</li>
             <li>“Load recommended backgrounds” selects a few layers based on the current topic and time range.</li>
-            <li>With “Append same source to the same layer” enabled, repeated imports are appended to the existing layer.</li>
+            <li>Imports create separate layers by default. Enable “Append to same-name layer” to keep and extend an existing layer.</li>
             <li>The point-event option under “Display” can expand single-year points such as <code>1647~1647</code> into full-year bars, reducing label overlap.</li>
           </ul>`,
     `<div class="hint-title">Controls</div>
@@ -511,7 +536,7 @@
             <li><span class="kbd">Wheel</span> over the layer-name area to scroll the page vertically.</li>
             <li>Use the “Range” menu to jump to human-history, geological-history, or cosmic-history scales.</li>
             <li>Drag in the layer-name area to reorder layers.</li>
-            <li><span class="kbd">Right-click</span> a layer name to rename, hide, recolour, or delete it.</li>
+            <li>Use “Layers” to locate, hide and manage each layer, or <span class="kbd">right-click</span> its name on the canvas.</li>
             <li>With event hover tooltips enabled under “Display”, hover an event to see its full title and time.</li>
             <li>Double-click the canvas or click “Reset view” to restore the view.</li>
           </ul>`,
@@ -590,8 +615,8 @@
     });
     wrapper.appendChild(select);
 
-    const zoom = bar.querySelector('.zoom-control');
-    if (zoom) bar.insertBefore(wrapper, zoom);
+    const appearance = bar.querySelector('.appearance-controls');
+    if (appearance) appearance.appendChild(wrapper);
     else bar.appendChild(wrapper);
 
     if (!document.getElementById('i18nStyles')) {
@@ -670,6 +695,11 @@
     const proto = window.CanvasRenderingContext2D?.prototype;
     if (!proto || proto.fillText.__showtimeI18nPatched) return;
     const nativeFillText = proto.fillText;
+    // CSV titles and layer names are data, even when they match a translated UI label.
+    window.ShowtimeI18n = Object.freeze({
+      fillDataText: (context, text, ...args) => nativeFillText.call(context, text, ...args),
+      localizeCanvasLabel: translateCanvasText,
+    });
     const patchedFillText = function patchedFillText(text, ...args) {
       return nativeFillText.call(this, translateCanvasText(text), ...args);
     };
@@ -692,7 +722,7 @@
       childList: true,
       characterData: true,
       attributes: true,
-      attributeFilter: ['title', 'aria-label'],
+      attributeFilter: ['title', 'aria-label', 'placeholder'],
     });
   }
 
