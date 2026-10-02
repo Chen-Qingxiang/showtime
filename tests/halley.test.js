@@ -3,6 +3,62 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const H = require('../halley.js');
+const History = require('../halley-history.js');
+
+test('selected observations have frozen provenance and link to real returns in three civilisations', () => {
+  assert.equal(History.records.length, 9);
+  assert.equal(new Set(History.records.map(r => r.civilization)).size, 3);
+  assert.equal(new Set(History.records.map(r => r.id)).size, History.records.length);
+  for (const record of History.records) {
+    assert.ok(Object.isFrozen(record) && Object.isFrozen(record.date));
+    assert.ok(H.getReturn(record.h));
+    assert.ok(record.sourceIds.every(id => History.sources[id]?.url.startsWith('https://')));
+  }
+  assert.equal(History.getRecord('unknown'), null);
+  assert.equal(History.forReturn(17).length, 2);
+  assert.equal(History.forReturn(30).length, 0);
+});
+
+test('Chinese 1066 sightings stay at their source dates, apart from the March perihelion', () => {
+  const record = History.getRecord('china-1066');
+  const event = History.timelineEvents([record], 'zh')[0];
+  const day = H.julianDayToCalendar(H.timeValueToJulianDay(event.start));
+  assert.deepEqual([day.year, day.month, day.day], [1066, 4, 30]);
+  assert.ok(event.start > H.getReturn(17).time);
+  assert.deepEqual(record.date, [1066, 4, 24]);
+  assert.equal(record.dateKind, 'separate');
+  assert.equal(event.halleyObservationId, record.id);
+});
+
+test('Babylonian possible-date window and probable identification are not exact sightings', () => {
+  const record = History.getRecord('babylon-164');
+  const event = History.timelineEvents([record])[0];
+  assert.equal(record.dateKind, 'window');
+  assert.equal(record.confidence, 'probable');
+  assert.ok(event.start < H.getReturn(1).time && event.end > H.getReturn(1).time);
+  near(H.timeValueToJulianDay(event.end) - H.timeValueToJulianDay(event.start), 29);
+  assert.equal(H.astronomicalToHistoricalYear(Math.floor(event.start)), -164);
+});
+
+test('Bayeux is a depicted year, and translation cannot change observation dates or source data', () => {
+  const record = History.getRecord('europe-1066');
+  assert.equal(record.kind, 'depiction'); assert.equal(record.dateKind, 'year');
+  const before = JSON.stringify(History.records);
+  const zh = History.timelineEvents(); const en = History.timelineEvents(History.records, 'zh');
+  assert.deepEqual(zh.map(e => [e.id, e.start, e.end]), en.map(e => [e.id, e.start, e.end]));
+  assert.equal(JSON.stringify(History.records), before);
+});
+
+test('month-precision deaths include their month, not all later returns in the same year', () => {
+  const january = H.julianDayToTimeValue(H.calendarToJulianDay(1986, 1, 1));
+  const february = H.julianDayToTimeValue(H.calendarToJulianDay(1986, 2, 1));
+  assert.equal(H.lifetimeSummary(1900, january, { deathPrecision: 'month' }).returns.at(-1).return.h, 28);
+  const result = H.lifetimeSummary(1900, february, { deathPrecision: 'month' });
+  assert.equal(result.returns.at(-1).return.h, 29);
+  assert.equal(result.returns.at(-1).boundaryUncertain, true);
+  const birth = H.julianDayToTimeValue(H.calendarToJulianDay(1900, 2, 1));
+  assert.equal(H.lifetimeSummary(birth, 1987, { birthPrecision: 'month' }).returns.at(-1).approximateAge, true);
+});
 
 const near = (actual, expected, tolerance = 1e-9) => assert.ok(Math.abs(actual - expected) < tolerance,
   `${actual} differs from ${expected}`);

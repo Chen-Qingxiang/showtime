@@ -15,8 +15,8 @@
 <button id="run" type="button">Run smoke tests</button>
 <pre id="results" aria-live="polite">Ready.</pre>
 <div class="frames">
-  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?v=halley-20261002-1"></iframe>
-  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?v=halley-20261002-1"></iframe>
+  <h2>Desktop · 1280 px</h2><iframe id="desktop" title="Desktop app" style="width:1280px" src="../index.html?v=halley-20261002-2"></iframe>
+  <h2>Mobile · 390 px</h2><iframe id="mobile" title="Mobile app" style="width:390px" src="../index.html?v=halley-20261002-2"></iframe>
 </div>
 <script>
 (() => {
@@ -28,6 +28,24 @@
   async function check(name, fn) {
     try { await fn(); count++; output.textContent += `\nPASS ${name}`; }
     catch (error) { output.textContent += `\nFAIL ${name}: ${error.message}`; throw error; }
+  }
+  async function preferences(frame) {
+    const key = 'showtime:halley-scale';
+    const reload = async () => {
+      await new Promise(resolve => { frame.addEventListener('load', resolve, { once: true }); frame.contentWindow.location.reload(); });
+      await pause();
+    };
+    await check(`${frame.id}: fresh preference defaults on`, async () => {
+      localStorage.removeItem(key); await reload();
+      assert(frame.contentWindow.document.getElementById('halleyScale').checked, 'fresh default is off');
+    });
+    await check(`${frame.id}: deliberate off/on choices survive reload`, async () => {
+      for (const value of [false, true]) {
+        const w = frame.contentWindow; const input = w.document.getElementById('halleyScale');
+        input.checked = value; input.dispatchEvent(new w.Event('change', { bubbles: true })); await reload();
+        assert(frame.contentWindow.document.getElementById('halleyScale').checked === value, 'manual preference lost');
+      }
+    });
   }
   async function suite(frame) {
     const w = frame.contentWindow; const d = w.document;
@@ -128,6 +146,77 @@
         d.getElementById('halleyInfoClose').click();
       }
     });
+    await check(`${tag}: Su Shi panel, return details, and observation links`, async () => {
+      language('en'); d.getElementById('btn-halley-person').click();
+      const person = d.getElementById('halleyPerson'); const result = d.getElementById('halleyPersonResult');
+      assert(person.open && result.textContent.includes('Su Shi') && result.textContent.includes('0.822 H'), 'example not shown');
+      assert(result.querySelector('[data-return-h="17"]').textContent.includes('29'), 'Su Shi age missing');
+      result.querySelector('[data-return-h="17"] button').click();
+      assert(dialog.open && !person.open && d.getElementById('halleyReturnSelect').value === '17', 'return link failed');
+      d.getElementById('halleySeeRecords').click();
+      assert(d.getElementById('halleyHistory').open && !dialog.open, 'observation link failed');
+      assert(d.querySelectorAll('#halleyHistoryRecords [data-record-id]').length === 2, 'same-return records missing');
+      d.getElementById('halleyHistoryClose').click();
+    });
+    await check(`${tag}: imported titles, manual dates, month precision, and invalid biographies`, async () => {
+      d.getElementById('btn-halley-person').click();
+      const picker = d.getElementById('halleyPersonSelect'); const result = d.getElementById('halleyPersonResult');
+      const imported = Array.from(picker.options).find(option => option.value.startsWith('event:') && option.textContent.includes('苏轼'));
+      assert(imported, 'imported interval is unavailable'); picker.value = imported.value; fire(picker, 'change');
+      const csv = d.getElementById('csvText').value; language('zh'); await pause();
+      assert(result.textContent.includes('苏轼') && picker.value === imported.value, 'language lost imported selection');
+      assert(d.getElementById('csvText').value === csv, 'person panel changed CSV');
+      const form = d.getElementById('halleyPersonForm');
+      const analyze = (birth, death) => {
+        d.getElementById('halleyPersonName').value = '<b>Original title</b>';
+        d.getElementById('halleyBirth').value = birth; d.getElementById('halleyDeath').value = death;
+        form.querySelector('button[type="submit"]').click();
+      };
+      analyze('1037-06-01', '1101-08-24');
+      assert(result.querySelector('[data-return-h="17"]').textContent.includes('28'), 'date-level age is wrong');
+      assert(result.textContent.includes('<b>Original title</b>') && !result.querySelector('b'), 'title became markup');
+      analyze('1900-02', '1986-01'); assert(!result.querySelector('[data-return-h="29"]'), 'death month extends through the whole year');
+      analyze('1BC', '1'); assert(result.textContent.includes('1 BC'), 'BCE/CE biography failed');
+      analyze('1101', '1037'); assert(d.getElementById('halleyPersonError').textContent, 'reversed interval accepted');
+      analyze('0', '1037'); assert(d.getElementById('halleyPersonError').textContent, 'historical zero accepted');
+      assert(d.getElementById('csvText').value === csv, 'manual form changed CSV');
+      d.getElementById('halleyPersonClose').click(); language('en');
+    });
+    await check(`${tag}: observation precision, sources, and future status`, async () => {
+      d.getElementById('btn-halley-history').click(); const picker = d.getElementById('halleyHistorySelect');
+      const records = d.getElementById('halleyHistoryRecords');
+      picker.value = '17'; fire(picker, 'change');
+      assert(records.textContent.includes('1066-04-30') && records.textContent.includes('1066-04-24'), 'source calendar conversion absent');
+      assert(records.querySelectorAll('a').length >= 2, 'sources absent');
+      picker.value = '1'; fire(picker, 'change');
+      assert(records.textContent.includes('Possible-date window') && records.textContent.includes('Probable'), 'Babylonian precision lost');
+      picker.value = '30'; fire(picker, 'change');
+      assert(records.textContent.includes('future prediction') && d.getElementById('halleyHistoryLoad').disabled, 'future has invented history');
+      d.getElementById('halleyHistoryClose').click();
+    });
+    await check(`${tag}: evidence layers load once without moving the view or changing CSV`, async () => {
+      d.getElementById('btn-halley-history').click(); const picker = d.getElementById('halleyHistorySelect');
+      picker.value = 'all'; fire(picker, 'change');
+      assert(d.querySelectorAll('#halleyHistoryRecords [data-record-id]').length === 9, 'record inventory wrong');
+      const zoomValue = d.getElementById('zoomSlider').value; const csv = d.getElementById('csvText').value;
+      d.getElementById('halleyHistoryLoad').click();
+      assert(d.getElementById('halleyHistoryStatus').textContent.includes('9'), 'records not loaded');
+      d.getElementById('halleyHistoryLoad').click();
+      assert(d.getElementById('halleyHistoryStatus').textContent.includes('0'), 'records duplicated');
+      assert(d.getElementById('zoomSlider').value === zoomValue && d.getElementById('csvText').value === csv, 'view or CSV changed');
+      d.getElementById('halleyHistoryClose').click();
+    });
+    await check(`${tag}: both new panels fit in both languages`, async () => {
+      for (const value of ['zh', 'en']) {
+        language(value); await pause();
+        for (const [button, id, close] of [['btn-halley-person', 'halleyPerson', 'halleyPersonClose'], ['btn-halley-history', 'halleyHistory', 'halleyHistoryClose']]) {
+          d.getElementById(button).click(); const rect = d.getElementById(id).getBoundingClientRect();
+          assert(rect.left >= 0 && rect.right <= w.innerWidth + 1, `${id} overflows`);
+          assert(d.getElementById(id).scrollWidth <= d.getElementById(id).clientWidth + 1, `${id} content overflows`);
+          d.getElementById(close).click();
+        }
+      }
+    });
     if (tag === 'mobile') await check('mobile: tap, pan, and pinch follow the existing touch handlers', async () => {
       locate(17);
       const rect = canvas.getBoundingClientRect();
@@ -150,7 +239,7 @@
   document.getElementById('run').addEventListener('click', async () => {
     document.getElementById('run').disabled = true; count = 0; output.textContent = 'Running…';
     try {
-      for (const frame of frames) await suite(frame);
+      for (const frame of frames) { await preferences(frame); await suite(frame); }
       output.textContent += `\n\n${count} checks passed. Both frames finish at H17.`;
       output.className = 'pass'; output.dataset.result = 'passed';
     } catch (error) { output.className = 'fail'; output.dataset.result = 'failed'; }

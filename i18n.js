@@ -92,6 +92,8 @@
     ['事件悬浮气泡', 'Event hover tooltip'],
     ['哈雷纪年', 'Halley Scale'],
     ['哈雷纪年资料', 'About the Halley Scale'],
+    ['人物与哈雷', 'Lives & Halley'],
+    ['哈雷观测史料', 'Halley observations'],
     ['范围', 'Range'],
     ['贴合数据', 'Fit data'],
     ['人类史', 'Human history'],

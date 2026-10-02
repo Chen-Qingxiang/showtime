@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Showtime Timeline · Multiscale Timeline Explorer</title>
-  <link rel="stylesheet" href="styles.css?v=halley-20261002-1" />
+  <link rel="stylesheet" href="styles.css?v=halley-20261002-2" />
   <link rel="stylesheet" href="language-switch.css" />
 </head>
 <body>
@@ -54,8 +54,10 @@
               </select>
             </label>
             <label class="menu-check"><input id="hoverTooltip" type="checkbox" checked /> 事件悬浮气泡</label>
-            <label class="menu-check"><input id="halleyScale" type="checkbox" /> 哈雷纪年</label>
+            <label class="menu-check"><input id="halleyScale" type="checkbox" checked /> 哈雷纪年</label>
             <button id="btn-halley-info" type="button">哈雷纪年资料</button>
+            <button id="btn-halley-person" type="button">人物与哈雷</button>
+            <button id="btn-halley-history" type="button">哈雷观测史料</button>
           </div>
         </details>
 
@@ -184,7 +186,7 @@
   </div>
   <div id="eventTooltip" role="tooltip"></div>
   <div id="halleyTooltip" role="tooltip" data-i18n-skip></div>
-  <dialog id="halleyInfo" aria-labelledby="halleyInfoTitle" data-i18n-skip>
+  <dialog id="halleyInfo" class="halley-dialog" aria-labelledby="halleyInfoTitle" data-i18n-skip>
     <div class="halley-dialog-heading">
       <h2 id="halleyInfoTitle" data-halley-text="title"></h2>
       <button id="halleyInfoClose" type="button" data-halley-text="close"></button>
@@ -197,15 +199,53 @@
     </label>
     <div id="halleyReturnDetail"></div>
     <button id="halleyLocate" type="button" data-halley-text="locate"></button>
+    <button id="halleySeeRecords" type="button" data-halley-text="observations"></button>
     <p class="halley-note" data-halley-text="precision"></p>
+  </dialog>
+  <dialog id="halleyPerson" class="halley-dialog" aria-labelledby="halleyPersonTitle" data-i18n-skip>
+    <div class="halley-dialog-heading">
+      <h2 id="halleyPersonTitle" data-halley-panel-text="personTitle"></h2>
+      <button id="halleyPersonClose" type="button" data-halley-panel-text="close"></button>
+    </div>
+    <p data-halley-panel-text="personIntro"></p>
+    <label class="halley-return-picker">
+      <span data-halley-panel-text="personSelect"></span>
+      <select id="halleyPersonSelect"></select>
+    </label>
+    <form id="halleyPersonForm">
+      <label class="halley-return-picker"><span data-halley-panel-text="name"></span><input id="halleyPersonName" type="text" maxlength="500"></label>
+      <div class="halley-endpoints">
+        <label class="halley-return-picker"><span data-halley-panel-text="birth"></span><input id="halleyBirth" type="text" required maxlength="50" placeholder="1037"></label>
+        <label class="halley-return-picker"><span data-halley-panel-text="death"></span><input id="halleyDeath" type="text" required maxlength="50" placeholder="1101"></label>
+      </div>
+      <p class="halley-note" data-halley-panel-text="inputs"></p>
+      <button type="submit" data-halley-panel-text="analyze"></button>
+      <p id="halleyPersonError" role="alert"></p>
+    </form>
+    <div id="halleyPersonResult" aria-live="polite"></div>
+    <button id="halleyPersonLocate" type="button" data-halley-panel-text="personLocate"></button>
+    <p class="halley-note" data-halley-panel-text="limits"></p>
+  </dialog>
+  <dialog id="halleyHistory" class="halley-dialog" aria-labelledby="halleyHistoryTitle" data-i18n-skip>
+    <div class="halley-dialog-heading">
+      <h2 id="halleyHistoryTitle" data-halley-panel-text="historyTitle"></h2>
+      <button id="halleyHistoryClose" type="button" data-halley-panel-text="close"></button>
+    </div>
+    <p data-halley-panel-text="historyIntro"></p>
+    <label class="halley-return-picker"><span data-halley-panel-text="historySelect"></span><select id="halleyHistorySelect"></select></label>
+    <button id="halleyHistoryLoad" type="button" data-halley-panel-text="load"></button>
+    <p id="halleyHistoryStatus" role="status"></p>
+    <div id="halleyHistoryRecords"></div>
   </dialog>
   <div id="toast"></div>
 
-  <script src="i18n.js?v=halley-20261002-1"></script>
+  <script src="i18n.js?v=halley-20261002-2"></script>
   <script src="language-switch.js"></script>
-  <script src="halley-data.js?v=halley-20261002-1"></script>
-  <script src="halley.js?v=halley-20261002-1"></script>
-  <script src="halley-scale.js?v=halley-20261002-1"></script>
-  <script src="app.js?v=halley-20261002-1"></script>
+  <script src="halley-data.js?v=halley-20261002-2"></script>
+  <script src="halley.js?v=halley-20261002-2"></script>
+  <script src="halley-history.js?v=halley-20261002-2"></script>
+  <script src="halley-scale.js?v=halley-20261002-2"></script>
+  <script src="halley-panels.js?v=halley-20261002-2"></script>
+  <script src="app.js?v=halley-20261002-2"></script>
 </body>
 </html>

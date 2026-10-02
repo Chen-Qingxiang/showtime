@@ -23,6 +23,7 @@
       prediction: 'NASA gives the next perihelion as 28 July 2061. It is a prediction, which may be revised, and is not a historical observation.',
       coordinate: 'Halley coordinate', span: 'Span', during: 'Returns during this interval', years: 'years',
       ephemeris: 'Ephemeris time', on: 'Halley Scale is on', off: 'Halley Scale is off',
+      observations: 'See historical records',
     },
     zh: {
       title: '哈雷纪年', short: '哈雷', return: '哈雷回归', observed: '历史观测',
@@ -44,6 +45,7 @@
       prediction: 'NASA公布下一次近日点为2061年7月28日。这是可能更新的预测，不是已经发生的历史观测。',
       coordinate: '哈雷坐标', span: '跨度', during: '期间回归', years: '年',
       ephemeris: '历书时', on: '哈雷纪年已开启', off: '哈雷纪年已关闭',
+      observations: '查看观测史料',
     },
   };
 
@@ -202,7 +204,7 @@
     parent.appendChild(block);
   }
 
-  function initInfo(onLocate) {
+  function initInfo(onLocate, onObserve) {
     const dialog = document.getElementById('halleyInfo');
     const select = document.getElementById('halleyReturnSelect');
     const detail = document.getElementById('halleyReturnDetail');
@@ -222,6 +224,9 @@
     document.getElementById('halleyLocate').addEventListener('click', () => {
       const entry = model.getReturn(Number(select.value)); dialog.close(); onLocate(entry);
     });
+    document.getElementById('halleySeeRecords').addEventListener('click', () => {
+      dialog.close(); onObserve?.(Number(select.value));
+    });
     dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
     refresh();
     return {
@@ -233,6 +238,6 @@
   }
 
   window.ShowtimeHalleyScale = Object.freeze({
-    rowHeight: 44, draw, drawGuides, findReturn, describeReturn, appendEventInfo, initInfo, t,
+    rowHeight: 44, draw, drawGuides, findReturn, describeReturn, appendEventInfo, initInfo, t, dateLabel, returnLabel,
   });
 })();

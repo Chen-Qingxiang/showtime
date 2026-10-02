@@ -886,6 +886,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   let colorMenuLayer = null;
   let halleyFrame = null;
   let halleyInfo = null;
+  let halleyPanels = null;
 
   const state = {
     pxPerYear: 2,
@@ -907,7 +908,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     drag: { active: false, layer: null, grabDy: 0, mouseY: 0, overlayY: 0, targetIndex: 0 },
     pointDisplayMode: DEFAULT_POINT_DISPLAY_MODE,
     hoverTooltipEnabled: DEFAULT_HOVER_TOOLTIP_ENABLED,
-    halleyScaleEnabled: false,
+    halleyScaleEnabled: true,
   };
 
   const pointer = { mode: null, startX: 0, startY: 0, lastX: 0, lastY: 0 };
@@ -942,6 +943,33 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     halleyInfo = window.ShowtimeHalleyScale.initInfo((entry) => {
       setHalleyScaleEnabled(true);
       setViewToSpan(230, entry.time);
+    }, (h) => halleyPanels.openHistory(h));
+    halleyPanels = window.ShowtimeHalleyPanels.init({
+      getIntervals: () => state.data.filter(event => event.end > event.start && !event.halleyObservationId)
+        .map(event => personProfile(event)),
+      parsePerson: (title, start, end) => {
+        const a = parseTimeToken(start); const b = parseTimeToken(end);
+        const zero = value => /^(?:0+\s*(?:BC|BCE)?|(?:公元)?前\s*0+)$/i.test(value.trim());
+        if (!a || !b || !Number.isFinite(a.value) || !Number.isFinite(b.value) || b.value < a.value || zero(start) || zero(end)) return null;
+        return personProfile({ id: 'manual', title: title.trim() || '—', start: a.value, end: b.value,
+          startPrecision: a.precision, endPrecision: b.precision, startDate: a.date, endDate: b.date });
+      },
+      locatePerson: (profile) => {
+        setHalleyScaleEnabled(true);
+        setViewToSpan(Math.max(30, (profile.end - profile.start) * 1.4), (profile.start + profile.end) / 2);
+      },
+      openReturn: entry => halleyInfo.open(entry),
+      loadObservations: (records, language) => {
+        const existing = new Set(state.data.map(event => event.halleyObservationId).filter(Boolean));
+        const events = window.ShowtimeHalleyHistory.timelineEvents(records.filter(record => !existing.has(record.id)), language);
+        for (const event of events) {
+          event.startDate = event.startPrecision === 'date' ? timeValueToDateParts(event.start) : null;
+          event.endDate = event.endPrecision === 'date' ? timeValueToDateParts(event.end) : null;
+          if (!state.layerColors.has(event.layer)) state.layerColors.set(event.layer, '#528f9c');
+        }
+        if (events.length) { state.data.push(...events); rebuildFromState(); resizeCanvas(); }
+        return events.length;
+      },
     });
     bindCanvasInteractions();
     bindUIActions();
@@ -954,6 +982,7 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     window.addEventListener('showtime:languagechange', () => {
       hideEventTooltip();
       halleyInfo.refresh();
+      halleyPanels.refresh();
       updateZoomReadout();
       draw();
     });
@@ -1660,6 +1689,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     return start === end ? start : `${start}~${end}`;
   }
 
+  function personProfile(event) {
+    return { ...event, id: `event:${event.id}`, rangeText: displayEventRange(event),
+      startText: formatTimeValue(event.start, event.startPrecision, event.startDate),
+      endText: formatTimeValue(event.end, event.endPrecision, event.endDate) };
+  }
+
   function isPointEvent(event) {
     return Math.abs(event.start - event.end) <= TIME_EPSILON;
   }
@@ -1923,8 +1958,8 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
   }
 
   function restoreHalleyScaleState() {
-    let enabled = false;
-    try { enabled = window.localStorage.getItem(HALLEY_SCALE_STORAGE_KEY) === '1'; } catch {}
+    let enabled = true;
+    try { enabled = window.localStorage.getItem(HALLEY_SCALE_STORAGE_KEY) !== '0'; } catch {}
     setHalleyScaleEnabled(enabled, { skipStorage: true, skipResize: true });
   }
 
@@ -2097,6 +2132,11 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
     ui.eventTooltip.appendChild(time);
     if (state.halleyScaleEnabled) {
       window.ShowtimeHalleyScale.appendEventInfo(ui.eventTooltip, event.start, event.end);
+    }
+    const record = window.ShowtimeHalleyHistory.getRecord(event.halleyObservationId);
+    if (record) {
+      const evidence = document.createElement('div'); evidence.dataset.i18nSkip = '';
+      ui.eventTooltip.appendChild(evidence); window.ShowtimeHalleyPanels.describeRecord(evidence, record, false);
     }
   }
 
@@ -3061,6 +3101,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       closeToolbarMenus();
       halleyInfo.open();
     });
+    document.getElementById('btn-halley-person').addEventListener('click', () => {
+      hideEventTooltip(); closeToolbarMenus(); halleyPanels.openPerson();
+    });
+    document.getElementById('btn-halley-history').addEventListener('click', () => {
+      hideEventTooltip(); closeToolbarMenus(); halleyPanels.openHistory();
+    });
 
     ui.loadExampleButton?.addEventListener('click', async () => {
       const path = ui.exampleSelect?.value;
@@ -3247,6 +3293,12 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
       const rect = ui.canvas.getBoundingClientRect();
       const entry = window.ShowtimeHalleyScale.findReturn(halleyFrame, event.clientX - rect.left, event.clientY - rect.top);
       if (entry) halleyInfo.open(entry);
+      else {
+        const hit = findEventAtCanvasPoint(event.clientX - rect.left, event.clientY - rect.top);
+        const record = hit && window.ShowtimeHalleyHistory.getRecord(hit.event.halleyObservationId);
+        if (record) halleyPanels.openHistory(record.h);
+        else if (hit && !isPointEvent(hit.event)) halleyPanels.openPerson(hit.event);
+      }
     }
     if (!state.drag.active || !state.drag.layer) return;
 
@@ -3432,7 +3484,9 @@ const DEFAULT_CSV_SAMPLE = `# time,title（两列；layer 由文件名决定，�
         halleyInfo.open(entry);
         event.preventDefault();
       } else if (hit) {
-        showEventTooltip(hit.event, point.clientX, point.clientY);
+        const record = window.ShowtimeHalleyHistory.getRecord(hit.event.halleyObservationId);
+        if (record) halleyPanels.openHistory(record.h);
+        else showEventTooltip(hit.event, point.clientX, point.clientY);
         event.preventDefault();
       }
     }

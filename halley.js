@@ -112,8 +112,11 @@
     if (!Number.isFinite(birth) || !Number.isFinite(death) || death < birth) return null;
     const birthPrecision = options.birthPrecision || 'year';
     const deathPrecision = options.deathPrecision || 'year';
-    const end = deathPrecision === 'year' ? Math.floor(death) + 1 - 1e-9 : death;
     const birthDate = julianDayToCalendar(timeValueToJulianDay(birth));
+    const deathDate = julianDayToCalendar(timeValueToJulianDay(death));
+    const end = deathPrecision === 'year' ? Math.floor(death) + 1 - 1e-9
+      : deathPrecision === 'month' ? julianDayToTimeValue(calendarToJulianDay(
+        deathDate.year + (deathDate.month === 12 ? 1 : 0), deathDate.month === 12 ? 1 : deathDate.month + 1)) - 1e-9 : death;
     return {
       startH: toHalley(birth), endH: toHalley(death), spanH: span(birth, death),
       coverageComplete: birth >= first.time && end <= last.time,
@@ -126,10 +129,13 @@
           return: entry,
           // Year-only biographies give an approximate age, never a verified sighting.
           age: birthPrecision === 'year' ? Math.floor(entry.time) - Math.floor(birth)
+            : birthPrecision === 'month' ? returnDate.year - birthDate.year - (returnDate.month < birthDate.month ? 1 : 0)
             : returnDate.year - birthDate.year - (beforeBirthday ? 1 : 0),
-          approximateAge: birthPrecision === 'year',
+          approximateAge: birthPrecision === 'year' || birthPrecision === 'month',
           boundaryUncertain: (birthPrecision === 'year' && Math.floor(entry.time) === Math.floor(birth))
-            || (deathPrecision === 'year' && Math.floor(entry.time) === Math.floor(death)),
+            || (deathPrecision === 'year' && Math.floor(entry.time) === Math.floor(death))
+            || (birthPrecision === 'month' && returnDate.year === birthDate.year && returnDate.month === birthDate.month)
+            || (deathPrecision === 'month' && returnDate.year === deathDate.year && returnDate.month === deathDate.month),
         };
       }),
     };
